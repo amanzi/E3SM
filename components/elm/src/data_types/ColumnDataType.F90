@@ -22,6 +22,7 @@ module ColumnDataType
   use elm_varcon      , only : c13ratio, c14ratio, secspday
   use elm_varctl      , only : use_fates, use_fates_planthydro, create_glacier_mec_landunit, use_IM2_hillslope_hydrology
   use elm_varctl      , only : use_hydrstress, use_crop
+  use elm_varctl      , only : use_alquimia
   use elm_varctl      , only : bound_h2osoi, use_cn, iulog, use_vertsoilc, spinup_state
   use elm_varctl      , only : ero_ccycle
   use elm_varctl      , only : use_elm_interface, use_pflotran, pf_cmode
@@ -233,6 +234,11 @@ module ColumnDataType
     real(r8), pointer :: totsomc_end          (:)    => null()
     real(r8), pointer :: decomp_som2c_vr      (:,:)  => null()
     real(r8), pointer :: cropseedc_deficit    (:)    => null()
+    real(r8), pointer :: DOC_vr               (:,:)  => null() ! gC/m2
+    real(r8), pointer :: DIC_vr               (:,:)  => null() ! gC/m2
+    real(r8), pointer :: totDOC               (:)    => null() ! gC/m2
+    real(r8), pointer :: totDIC               (:)    => null() ! gC/m2
+
 
   contains
     procedure, public :: Init    => col_cs_init
@@ -530,6 +536,11 @@ module ColumnDataType
     real(r8), pointer :: qflx_h2orof_drain    (:)   => null() ! drainage from floodplain inundation volume (mm H2O/s))
     real(r8), pointer :: qflx_from_uphill     (:)   => null() ! input to top soil layer from uphill topounit(s) (mm H2O/s))
     real(r8), pointer :: qflx_to_downhill     (:)   => null() ! output from column to the downhill topounit (mm H2O/s))
+
+    real(r8), pointer :: qflx_lat_aqu         (:)   => null() ! Total lateral flux between hummock/hollow (mm H2O /s)
+    real(r8), pointer :: qflx_lat_aqu_layer   (:,:) => null() ! Lateral flux between hummock/hollow by layer (mm H2O/s)
+    real(r8), pointer :: qflx_surf_input      (:)   => null() ! Runoff input from Hummock (mm H2O/s)
+    real(r8), pointer :: qflx_tide            (:)   => null() ! tidal flux between consecutive timesteps TAO
 
     real(r8), pointer :: mflx_infl_1d         (:)   => null() ! infiltration source in top soil control volume (kg H2O /s)
     real(r8), pointer :: mflx_dew_1d          (:)   => null() ! liquid+snow dew source in top soil control volume (kg H2O /s)
@@ -2184,6 +2195,11 @@ contains
     allocate(this%totsomc_1m           (begc:endc))     ; this%totsomc_1m           (:)     = spval
     allocate(this%totlitc              (begc:endc))     ; this%totlitc              (:)     = spval
     allocate(this%totsomc              (begc:endc))     ; this%totsomc              (:)     = spval
+    allocate(this%DOC_vr           (begc:endc,1:nlevdecomp_full))                 ; this%DOC_vr           (:,:)   = spval
+    allocate(this%DIC_vr           (begc:endc,1:nlevdecomp_full))                 ; this%DIC_vr           (:,:)   = spval
+    allocate(this%totDOC               (begc:endc))     ; this%totDOC               (:)     = spval
+    allocate(this%totDIC               (begc:endc))     ; this%totDIC               (:)     = spval
+
 
     !-----------------------------------------------------------------------
     ! initialize history fields for select members of col_cs
@@ -2300,6 +2316,19 @@ contains
           call hist_addfld1d (fname='FUELC', units='gC/m^2', &
                avgflag='A', long_name='fuel load', &
                ptr_col=this%fuelc, default='inactive')
+
+          if(use_alquimia) then
+             this%DOC_vr(begc:endc,:) = spval
+             call hist_addfld2d (fname='DOC_vr', units='gC/m^3',  type2d='levdcmp', &
+                avgflag='A', long_name='Soil dissolved organic carbon vr', &
+                   ptr_col=this%DOC_vr,default='inactive')
+
+             this%DIC_vr(begc:endc,:) = spval
+             call hist_addfld2d (fname='DIC_vr', units='gC/m^3',  type2d='levdcmp', &
+                avgflag='A', long_name='Soil dissolved inorganic carbon vr', &
+                   ptr_col=this%DIC_vr,default='inactive')
+          endif
+
 
 
        end if
@@ -2493,6 +2522,8 @@ contains
                    endif
                 end do
                 this%ctrunc_vr(c,j) = 0._r8
+                this%DOC_vr(c,j) = 0._r8
+                this%DIC_vr(c,j) = 0._r8
              end do
              if ( nlevdecomp > 1 ) then
                 do j = nlevdecomp+1, nlevdecomp_full
@@ -2500,6 +2531,8 @@ contains
                       this%decomp_cpools_vr(c,j,k) = 0._r8
                    end do
                    this%ctrunc_vr(c,j) = 0._r8
+                   this%DOC_vr(c,j) = 0._r8
+                   this%DIC_vr(c,j) = 0._r8
                 end do
              end if
              this%decomp_cpools(c,1:ndecomp_pools)    = decomp_cascade_con%initial_stock(1:ndecomp_pools)
@@ -2511,6 +2544,8 @@ contains
                    this%decomp_cpools_vr(c,j,k) = c12_carbonstate_vars%decomp_cpools_vr(c,j,k) * ratio
                 end do
                 this%ctrunc_vr(c,j) = c12_carbonstate_vars%ctrunc_vr(c,j) * ratio
+                this%DOC_vr(c,j) = c12_carbonstate_vars%DOC_vr(c,j) * ratio
+                this%DIC_vr(c,j) = c12_carbonstate_vars%DIC_vr(c,j) * ratio
              end do
              if ( nlevdecomp > 1 ) then
                 do j = nlevdecomp+1, nlevdecomp_full
@@ -2518,6 +2553,8 @@ contains
                       this%decomp_cpools_vr(c,j,k) = 0._r8
                    end do
                    this%ctrunc_vr(c,j) = 0._r8
+                   this%DOC_vr(c,j) = 0._r8
+                   this%DIC_vr(c,j) = 0._r8
                 end do
              end if
              this%cwdc(c) = c12_carbonstate_vars%cwdc(c) * ratio
@@ -2685,6 +2722,20 @@ contains
                   errMsg(__FILE__, __LINE__))
           end if
        end do
+
+       if(use_alquimia) then
+          ptr2d => this%DOC_vr
+          call restartvar(ncid=ncid, flag=flag, varname='DOC_vr', xtype=ncd_double,  &
+               dim1name='column', dim2name='levgrnd', switchdim=.true., &
+               long_name='', units='', fill_value=spval, &
+               interpinic_flag='interp', readvar=readvar, data=ptr2d)
+
+          ptr2d => this%DIC_vr
+          call restartvar(ncid=ncid, flag=flag, varname='DIC_vr', xtype=ncd_double,  &
+               dim1name='column', dim2name='levgrnd', switchdim=.true., &
+               long_name='', units='', fill_value=spval, &
+               interpinic_flag='interp', readvar=readvar, data=ptr2d)
+       endif
 
        if (use_vertsoilc) then
           ptr2d => this%ctrunc_vr
@@ -3230,6 +3281,13 @@ contains
        end do
     end do
 
+    do fc = 1, num_soilc
+      c = filter_soilc(fc)
+      this%totDOC(c) = dot_sum(this%DOC_vr(c,1:nlevdecomp),dzsoi_decomp(1:nlevdecomp))
+      this%totDIC(c) = dot_sum(this%DIC_vr(c,1:nlevdecomp),dzsoi_decomp(1:nlevdecomp))
+   enddo
+
+
     do fc = 1,num_soilc
        c = filter_soilc(fc)
 
@@ -3244,6 +3302,7 @@ contains
             this%cwdc(c)     + &
             this%totlitc(c)  + &
             this%totsomc(c)  + &
+            this%totDIC(c) + this%totDOC(c) + &  ! For alquimia, also include DIC and DOC here. Should be zero otherwise
             this%totprodc(c) + &
             this%totvegc(c)
 
@@ -3255,6 +3314,7 @@ contains
             this%cwdc(c)     + &
             this%totlitc(c)  + &
             this%totsomc(c)  + &
+            this%totDIC(c) + this%totDOC(c) + &  ! For alquimia, also include DIC and DOC here. Should be zero otherwise
             this%totprodc(c) + &
             this%ctrunc(c)   + &
             this%cropseedc_deficit(c)
@@ -5836,6 +5896,12 @@ contains
     allocate(this%qflx_h2orof_drain      (begc:endc))             ; this%qflx_h2orof_drain    (:)   = spval
     allocate(this%qflx_from_uphill       (begc:endc))             ; this%qflx_from_uphill     (:)   = spval
     allocate(this%qflx_to_downhill       (begc:endc))             ; this%qflx_to_downhill     (:)   = spval
+
+    allocate(this%qflx_lat_aqu           (begc:endc))             ; this%qflx_lat_aqu         (:)   = 0._r8
+    allocate(this%qflx_lat_aqu_layer     (begc:endc,1:nlevgrnd))  ; this%qflx_lat_aqu_layer   (:,:) = 0._r8
+    allocate(this%qflx_surf_input        (begc:endc))             ; this%qflx_surf_input      (:)   = spval
+    allocate(this%qflx_tide              (begc:endc))             ; this%qflx_tide            (:)   = spval
+
 
     !VSFM variables
     ncells = endc - begc + 1
