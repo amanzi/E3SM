@@ -343,8 +343,7 @@ contains
           h2orof               =>    col_ws%h2orof               , & ! Output:  [real(r8) (:)   ]  floodplain inudntion volume (mm)
           frac_h2orof          =>    col_ws%frac_h2orof          , & ! Output:  [real(r8) (:)   ]  floodplain inudntion fraction (-)
 
-          qflx_ev_soil         =>    col_wf%qflx_ev_soil         , & ! Input:  [real(r8) (:)   ]  evaporation flux from soil (W/m**2) [+ to atm]
-          qflx_evap_soi        =>    col_wf%qflx_evap_soi        , & ! Input:  [real(r8) (:)   ]  ground surface evaporation rate (mm H2O/s) [+]
+          qflx_ev_soil         =>    col_wf%qflx_ev_soil         , & ! Input:  [real(r8) (:)   ]  evaporation flux from soil (W/m**2) [+ to atm]  ! ETC FIXME: units incorrect!
           qflx_evap_grnd       =>    col_wf%qflx_evap_grnd       , & ! Input:  [real(r8) (:)   ]  ground surface evaporation rate (mm H2O/s) [+]
           qflx_top_soil        =>    col_wf%qflx_top_soil        , & ! Input:  [real(r8) (:)   ]  net water input into soil from top (mm/s)
           qflx_ev_h2osfc       =>    col_wf%qflx_ev_h2osfc       , & ! Input:  [real(r8) (:)   ]  evaporation flux from h2osfc (W/m**2) [+ to atm]
@@ -404,6 +403,11 @@ contains
              if (snl(c) >= 0) then
                 fsno=0._r8
                 ! if no snow layers, sublimation is removed from h2osoi_ice in drainage
+                !
+                ! ETC: "if now snow layers, sublimation is removed
+                ! from h2osoi_ice in drainage"!?!  What does this
+                ! mean?  Why in drainage?  Go searching for this...
+                ! How do these differ?
                 qflx_evap(c)=qflx_evap_grnd(c)
              else
                 fsno=frac_sno(c)
@@ -423,6 +427,7 @@ contains
              endif
 
              !1. partition surface inputs between soil and h2osfc
+             ! ETC: note, this assumes snow sits on top of bare ground only?
              qflx_in_soil(c) = (1._r8 - frac_h2osfc(c)) * (qflx_top_soil(c)  - qflx_surf(c))
              qflx_in_h2osfc(c) = frac_h2osfc(c) * (qflx_top_soil(c)  - qflx_surf(c))
              qflx_gross_infl_soil(c) = (1._r8 - frac_h2osfc(c)) * (qflx_top_soil(c)  - qflx_surf(c))
@@ -791,7 +796,7 @@ contains
           rous=max(rous,0.02_r8)
 
           !--  water table is below the soil column  --------------------------------------
-		      g = col_pp%gridcell(c)
+          g = col_pp%gridcell(c)
           l = col_pp%landunit(c)
           qcharge_temp = qcharge(c)
 
@@ -799,7 +804,7 @@ contains
           zwt(c) = zwt(c) + (qflx_grnd_irrig_col(c) * dtime)/1000._r8/rous
 
           if(jwt(c) == nlevbed) then
-	           if (.not. (zengdecker_2009_with_var_soil_thick)) then
+           if (.not. (zengdecker_2009_with_var_soil_thick)) then
                 wa(c)  = wa(c) + qcharge(c)  * dtime
                 zwt(c) = zwt(c) - (qcharge(c)  * dtime)/1000._r8/rous
              end if

@@ -72,7 +72,6 @@ contains
     real(r8) :: egsmax(bounds%begc:bounds%endc)                    ! max. evaporation which soil can provide at one time step
     real(r8) :: egirat(bounds%begc:bounds%endc)                    ! ratio of topsoil_evap_tot : egsmax
     real(r8) :: tinc(bounds%begc:bounds%endc)                      ! temperature difference of two time step
-    real(r8) :: sumwt(bounds%begc:bounds%endc)                     ! temporary
     real(r8) :: evaprat(bounds%begp:bounds%endp)                   ! ratio of qflx_evap_soi/topsoil_evap_tot
     real(r8) :: save_qflx_evap_soi                                 ! temporary storage for qflx_evap_soi
     real(r8) :: topsoil_evap_tot(bounds%begc:bounds%endc)          ! column-level total evaporation from top soil layer
@@ -135,9 +134,9 @@ contains
          qflx_sub_snow           => veg_wf%qflx_sub_snow      , & ! Output: [real(r8) (:)   ]  sublimation rate from snow pack (mm H2O /s) [+]
          qflx_dew_snow           => veg_wf%qflx_dew_snow      , & ! Output: [real(r8) (:)   ]  surface dew added to snow pack (mm H2O /s) [+]
          qflx_dew_grnd           => veg_wf%qflx_dew_grnd      , & ! Output: [real(r8) (:)   ]  ground surface dew formation (mm H2O /s) [+]
-         qflx_ev_snow            => veg_wf%qflx_ev_snow       , & ! Output: [real(r8) (:)   ]  evaporation flux from snow (W/m**2) [+ to atm]
+         qflx_ev_snow            => veg_wf%qflx_ev_snow       , & ! Output: [real(r8) (:)   ]  evaporation flux from snow (W/m**2) [+ to atm] NOTE: these are wrong units, I think!  Fixme!  ETC
          qflx_ev_soil            => veg_wf%qflx_ev_soil       , & ! Output: [real(r8) (:)   ]  evaporation flux from soil (W/m**2) [+ to atm]
-         qflx_ev_h2osfc          => veg_wf%qflx_ev_h2osfc     , & ! Output: [real(r8) (:)   ]  evaporation flux from soil (W/m**2) [+ to atm]
+         qflx_ev_h2osfc          => veg_wf%qflx_ev_h2osfc     , & ! Output: [real(r8) (:)   ]  evaporation flux from surface water (W/m**2) [+ to atm]
 
          eflx_sh_grnd            => veg_ef%eflx_sh_grnd      , & ! Output: [real(r8) (:)   ]  sensible heat flux from ground (W/m**2) [+ to atm]
          eflx_sh_veg             => veg_ef%eflx_sh_veg       , & ! Output: [real(r8) (:)   ]  sensible heat flux from leaves (W/m**2) [+ to atm]
@@ -227,7 +226,6 @@ contains
       do fc = 1,num_nolakec
          c = filter_nolakec(fc)
          topsoil_evap_tot(c) = 0._r8
-         sumwt(c) = 0._r8
       end do
 
       do pi = 1,max_patch_per_col

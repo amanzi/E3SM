@@ -88,6 +88,7 @@ contains
     use reweightMod               , only: reweight_wrapup
     use topounit_varcon           , only: max_topounits, has_topounit, topounit_varcon_init
     use elm_varctl                , only: use_top_solar_rad
+    use spmdMod
     !
     ! !LOCAL VARIABLES:
     integer           :: ier                     ! error status
@@ -1101,6 +1102,7 @@ contains
     use elm_varctl               , only : vsfm_include_seepage_bc, vsfm_satfunc_type
     use elm_varctl               , only : vsfm_lateral_model_type
     use elm_varctl               , only : use_petsc_thermal_model
+    use elm_varctl               , only : use_ats
     use elm_varctl               , only : lateral_connectivity
     use elm_varctl               , only : finidat
     use decompMod                , only : get_proc_clumps
@@ -1114,6 +1116,7 @@ contains
     use ExternalModelInterfaceMod, only : EMI_Init_EM
     use ExternalModelConstants   , only : EM_ID_VSFM
     use ExternalModelConstants   , only : EM_ID_PTM
+    use ExternalModelConstants   , only : EM_ID_ATS
 
     implicit none
 
@@ -1162,6 +1165,10 @@ contains
 
     if (use_petsc_thermal_model) then
        call EMI_Init_EM(EM_ID_PTM)
+    endif
+
+    if (use_ats) then
+       call EMI_Init_EM(EM_ID_ATS)
     endif
 
     call t_stopf('elm_init3')

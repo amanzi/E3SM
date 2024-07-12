@@ -267,7 +267,7 @@ contains
             ptr_patch=this%root_depth_patch, default='inactive' )
     end if
 
-    if (use_cn .or. use_fates) then
+    if (use_cn .or. use_fates .or. use_ats) then
        this%soilpsi_col(begc:endc,:) = spval
        call hist_addfld2d (fname='SOILPSI', units='MPa', type2d='levgrnd', &
             avgflag='A', long_name='soil water potential in each soil layer', &
@@ -653,7 +653,7 @@ contains
 
           do lev = 1,nlevgrnd
              ! Number of soil layers in hydrologically active columns = NLEV2BED
-	     nlevbed = col_pp%nlevbed(c)
+	         nlevbed = col_pp%nlevbed(c)
              if ( more_vertlayers )then ! duplicate clay and sand values from last soil layer
 
                 if (lev .eq. 1) then

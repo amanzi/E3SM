@@ -1,2 +1,11 @@
 string(APPEND CONFIG_ARGS " ")
 string(APPEND CPPDEFS " ")
+
+set(AMANZI_TPLS_DIR "$ENV{AMANZI_TPLS_DIR}")
+set(ATS_DIR "$ENV{ATS_DIR}")
+if (COMP_NAME STREQUAL elm)
+  if (NOT ${ATS_DIR} STREQUAL "")
+    string(APPEND CPPDEFS " -DUSE_ATS_LIB ")
+    string(APPEND CMAKE_Fortran_FLAGS " -I${ATS_DIR}/include ")
+  endif()
+endif()

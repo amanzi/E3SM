@@ -122,6 +122,7 @@ contains
     use shr_string_mod            , only : shr_string_getParentDir
     use elm_interface_pflotranMod , only : elm_pf_readnl
     use ELMBeTRNLMod              , only : betr_readNL
+    use ExternalModelATS_readnlMod, only : elm_ats_readnl
     
     use elm_varctl                , only : elm_ctl_set_nls
 
@@ -307,6 +308,9 @@ contains
 
     ! bgc & pflotran interface
     namelist /elm_inparm/ use_elm_interface, use_elm_bgc, use_pflotran
+
+    ! ats
+    namelist /elm_inparm/ use_ats
 
     namelist /elm_inparm/ use_dynroot
 
@@ -586,6 +590,22 @@ contains
           endif
        endif
 
+
+       ! checking if conflict when using ATS external model, by which hydrology coupling is the default mode
+       if (use_ats) then
+          ! currently ATS only provides subsurface hydrology
+          ! when other functions, such as thermal-ATS, bgc-ATS, ... on, need to update this checking
+          if (use_vsfm) then ! apparently cannot have 'VSFM' on
+             call endrun(msg=' ERROR: use_vsfm and use_ats cannot both be set to true.'//&
+                   errMsg(__FILE__, __LINE__))
+          end if
+
+          if (use_pflotran .and. pf_hmode) then ! apparently cannot have 'PFLOTRAN' hydrological coupling on
+             call endrun(msg=' ERROR: use_pflotran/pf_hmode and use_ats cannot both be set to true.'//&
+                   errMsg(__FILE__, __LINE__))
+          end if
+       end if
+
        ! a temporary solution for namelist reading issues with Mac clang based gfortran compiler
        ! (TODO) need to check elm_varctl:nu_com after control_spmd() calling below
        call elm_ctl_set_nls(nu_com_in            = nu_com,                 &
@@ -613,6 +633,10 @@ contains
 
     if (use_pflotran) then
        call elm_pf_readnl(NLFilename)
+    end if
+
+    if (use_ats) then
+       call elm_ats_readnl(NLFilename)
     end if
 
     if (use_betr) then
@@ -974,6 +998,9 @@ contains
     call mpi_bcast (use_elm_bgc, 1, MPI_LOGICAL, 0, mpicom, ier)
     call mpi_bcast (use_pflotran, 1, MPI_LOGICAL, 0, mpicom, ier)
 
+    ! ats
+    call mpi_bcast (use_ats, 1, MPI_LOGICAL, 0, mpicom, ier)
+    
     !cpl_bypass
      call mpi_bcast (metdata_type,   len(metdata_type),   MPI_CHARACTER, 0, mpicom, ier)
      call mpi_bcast (metdata_bypass, len(metdata_bypass), MPI_CHARACTER, 0, mpicom, ier)

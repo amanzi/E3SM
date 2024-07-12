@@ -479,7 +479,7 @@ module ColumnDataType
     real(r8), pointer :: qflx_ev_snow         (:)   => null() ! evaporation heat flux from snow         (W/m**2) [+ to atm] ! NOTE: unit shall be mm H2O/s for water NOT heat
     real(r8), pointer :: qflx_ev_soil         (:)   => null() ! evaporation heat flux from soil         (W/m**2) [+ to atm] ! NOTE: unit shall be mm H2O/s for water NOT heat
     real(r8), pointer :: qflx_ev_h2osfc       (:)   => null() ! evaporation heat flux from soil         (W/m**2) [+ to atm] ! NOTE: unit shall be mm H2O/s for water NOT heat
-    real(r8), pointer :: qflx_gross_evap_soil (:)   => null() ! gross infiltration from soil, this satisfies the relationship qflx_infl = qflx_gross_infl_soil-qflx_gross_evap_soil
+    real(r8), pointer :: qflx_gross_evap_soil (:)   => null() ! gross evaporation from soil, this satisfies the relationship qflx_infl = qflx_gross_infl_soil-qflx_gross_evap_soil
     real(r8), pointer :: qflx_gross_infl_soil (:)   => null() ! gross infiltration, before considering the evaporation
     real(r8), pointer :: qflx_adv             (:,:) => null() ! advective flux across different soil layer interfaces [mm H2O/s] [+ downward]
     real(r8), pointer :: qflx_rootsoi         (:,:) => null() ! root and soil water exchange [mm H2O/s] [+ into root]
@@ -1488,9 +1488,25 @@ contains
         ptr_col=this%h2osoi_ice, l2g_scale_type='ice')
 
     this%h2osfc(begc:endc) = spval
-     call hist_addfld1d (fname='H2OSFC',  units='mm',  &
+    call hist_addfld1d (fname='H2OSFC',  units='mm',  &
           avgflag='A', long_name='surface water depth', &
            ptr_col=this%h2osfc)
+
+    this%soilp(begc:endc,:) = spval
+    call hist_addfld2d (fname='SOIL_PRESSURE',  units='Pa', type2d='levgrnd', &
+          avgflag='A', long_name='soil pressure (vegetated landunits only)', &
+           ptr_col=this%soilp, l2g_scale_type='veg', default='inactive')
+
+      this%h2osoi_liqvol(begc:endc, :) = spval
+      call hist_addfld2d (fname='H2OSOIL_LIQVOL',  units='m3/m3 bulk',  type2d='levgrnd', &
+          avgflag='A', long_name='soil liq water vol fraction from external model, e.g. ATS', &
+           ptr_col=this%h2osoi_liqvol, default='inactive')
+
+       this%h2osoi_icevol(begc:endc,:) = spval
+       call hist_addfld2d (fname='H2OSOIL_ICEVOL',  units='m3/m3 bulk', type2d='levgrnd', &
+            avgflag='A', long_name='soil ice water vol fraction from external model, e.g. ATS', &
+            ptr_col=this%h2osoi_icevol, default='inactive')
+    end if
 
     this%h2osoi_vol(begc:endc,:) = spval
      call hist_addfld2d (fname='H2OSOI',  units='mm3/mm3', type2d='levgrnd', &
@@ -1697,9 +1713,13 @@ contains
              do j = 1, nlevs
                 if (j > nlevbed) then
                    this%h2osoi_vol(c,j) = 0.0_r8
+                   if (use_ats .or. use_pflotran) &
+                      this%h2osoi_vol(c,j) = 1.0_r8 ! saturated bedrock below soil
                 else
-		               if (use_fates .or. use_hydrstress) then
+                   if (use_fates .or. use_hydrstress) then
                       this%h2osoi_vol(c,j) = 0.70_r8*watsat_input(c,j) !0.15_r8 to avoid very dry conditions that cause errors in FATES
+                   elseif (use_ats .or. use_pflotran) then
+                      this%h2osoi_vol(c,j) = 0.15_r8 ! keep this the same as ELM for now
                    else
                       this%h2osoi_vol(c,j) = 0.15_r8
                    endif

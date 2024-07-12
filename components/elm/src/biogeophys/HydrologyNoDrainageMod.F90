@@ -41,6 +41,7 @@ contains
        num_nolakec, filter_nolakec, &
        num_hydrologyc, filter_hydrologyc, &
        num_hydrononsoic, filter_hydrononsoic, &
+       num_soilc, filter_soilc, &
        num_urbanc, filter_urbanc, &
        num_snowc, filter_snowc, &
        num_nosnowc, filter_nosnowc, canopystate_vars, &
@@ -68,6 +69,7 @@ contains
     use column_varcon        , only : icol_roof, icol_road_imperv, icol_road_perv, icol_sunwall
     use column_varcon        , only : icol_shadewall
     use elm_varctl           , only : use_cn, use_betr, use_fates, use_pflotran, pf_hmode, use_fan
+    use elm_varctl           , only : use_ats, ats_hmode
     use elm_varpar           , only : nlevgrnd, nlevsno, nlevsoi, nlevurb
     use SnowHydrologyMod     , only : SnowCompaction, CombineSnowLayers, DivideSnowLayers, DivideExtraSnowLayers, SnowCapping
     use SnowHydrologyMod     , only : SnowWater, BuildSnowFilter 
@@ -77,6 +79,7 @@ contains
     use elm_varctl           , only : use_vsfm
     use SoilHydrologyMod     , only : DrainageVSFM
     use SoilWaterMovementMod , only : Compute_EffecRootFrac_And_VertTranSink
+    use SoilWaterMovementMod , only : soilroot_water_method, zengdecker_2009, ATS_HYDRO
     !
     ! !ARGUMENTS:
     type(bounds_type)        , intent(in)    :: bounds
@@ -86,6 +89,8 @@ contains
     integer                  , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
     integer                  , intent(in)    :: num_hydrononsoic        ! number of non-soil landunit points in hydrology filter
     integer                  , intent(in)    :: filter_hydrononsoic(:)  ! column filter for non-soil hydrology points
+    integer                  , intent(in)    :: num_soilc               ! number of soil landunit points in hydrology filter
+    integer                  , intent(in)    :: filter_soilc(:)         ! column filter for soil landunit in hydrology points
     integer                  , intent(in)    :: num_urbanc           ! number of column urban points in column filter
     integer                  , intent(in)    :: filter_urbanc(:)     ! column filter for urban points
     integer                  , intent(inout) :: num_snowc            ! number of column snow points
@@ -100,6 +105,7 @@ contains
     type(aerosol_type)       , intent(inout) :: aerosol_vars
     type(soilhydrology_type) , intent(inout) :: soilhydrology_vars
     real(r8) :: dtime                         ! land model time step (sec)
+    integer  :: nstep                         ! land model running step currently
 
     !
     ! !LOCAL VARIABLES:
@@ -170,6 +176,7 @@ contains
          )
 
          dtime = dtime_mod
+         nstep = nstep_mod
       ! Determine initial snow/no-snow filters (will be modified possibly by
       ! routines CombineSnowLayers and DivideSnowLayers below
 
@@ -238,15 +245,123 @@ contains
       !------------------------------------------------------------------------------------
       if (use_pflotran .and. pf_hmode) then
 
+         call SoilWater(bounds, num_hydrononsoic, filter_hydrononsoic, &
+            num_urbanc, filter_urbanc, &
+            soilhydrology_vars, soilstate_vars, nstep, dtime)
+
+      !------------------------------------------------------------------------------------
+      elseif (use_ats .and. ats_hmode) then  ! note: 'ats_hmode' is surface-subsurface hydrology mode of ATS
+
+        ! now only apply to natural soil column, when coupling ats hydrology
+        !  (NOTE:
+        !        (1) have to change 'soilroot_water_method' here, because ATS initialization occurs
+        !             after 'init_soilwater_movement' calling in controlMod.F90;
+        !        (2) must be called prior to default ELM soil water module calling, so that ATS starts from previous
+        !            water states. But it should not be an issue if ATS over-rides ELM later on.
+        soilroot_water_method = ATS_HYDRO
+
+        if (nstep==0) then
+           ! set soilpsi for 1st timestep only.
+           do j = 1, nlevgrnd
+              do fc = 1, num_hydrologyc
+                 c = filter_hydrologyc(fc)
+
+                 if (h2osoi_liq(c,j) > 0._r8) then
+
+                    vwc = h2osoi_liq(c,j)/(dz(c,j)*denh2o)
+
+                    ! use the same constants used in the supercool so that psi for frozen soils is consistent
+                    fsattmp = max(vwc/watsat(c,j), 0.001_r8)
+                    psi = sucsat(c,j) * (-9.8e-6_r8) * (fsattmp)**(-bsw(c,j))  ! Mpa
+                    soilpsi(c,j) = min(max(psi,-15.0_r8),0._r8)
+
+                 else
+                    soilpsi(c,j) = -15.0_r8
+                 end if
+
+                 ! remove old fluxes
+                 ! These will be replaced with fluxes from ATS 
+                 col_wf%qflx_evap_tot(c) = col_wf%qflx_evap_tot(c) - col_wf%qflx_evap_veg(c) - col_wf%qflx_evap_soi(c) - col_wf%qflx_tran_veg(c)
+               
+              end do
+           end do
+        endif
+
+        ! ATS returns updated state variables h2osoi_liq/vol, h2osfc, zwt
+        ! and flux variables qflx_top_soil, qflx_tran and qflx_evap
+        call SoilWater(bounds, num_soilc, filter_soilc, &
+            num_urbanc, filter_urbanc, &
+            soilhydrology_vars, soilstate_vars, nstep, dtime)
+
+        ! Calculate soilpsi (MPa) from updated soil water content
+        do j = 1, nlevgrnd
+           do fc = 1, num_hydrologyc
+              c = filter_hydrologyc(fc)
+
+              ! recompute soil potential with new h2osoi_liq from ATS
+              if (h2osoi_liq(c,j) > 0._r8) then
+                 vwc = h2osoi_liq(c,j)/(dz(c,j)*denh2o)
+                 fsattmp = max(vwc/watsat(c,j), 0.001_r8)
+                 psi = sucsat(c,j) * (-9.8e-6_r8) * (fsattmp)**(-bsw(c,j))  ! Mpa
+                 soilpsi(c,j) = min(max(psi,-15.0_r8),0._r8)
+                 h2osoi_vol(c,j) = vwc + h2osoi_ice(c,j)/(dz(c,j)*denice)
+              else
+                 soilpsi(c,j) = -15.0_r8
+                 h2osoi_vol(c,j) = h2osoi_ice(c,j)/(dz(c,j)*denice)
+              end if
+
+! WB vars
+! Recalculate this
+! qflx_evap_tot - qflx_evap_soi + qflx_evap_can + qflx_tran_veg
+
+! Zero these out in any columns using ATS
+!qflx_floodc        - column flux of flood water from RTM
+!qflx_surf          - surface runoff
+!qflx_h2osfc_surf   - surface water runoff
+!qflx_qrgwl         - qflx_surf at glaciers, wetlands, lakes
+!qflx_drain         - sub-surface runoff
+!qflx_drain_perched - perched wt sub-surface runoff
+!qflx_lateral       - lateral flux of water to neighboring column
+
+! Leave these alone
+!qflx_surf_irrig_col
+!qflx_over_supply_col
+!qflx_snwcp_ice
+
+              soilhydrology_vars%qcharge_col(c) = 0.0_r8 ! used in WaterTable
+              soilhydrology_vars%wa_col(c) = 0.0_r8
+              col_wf%qflx_rsub_sat(c) = 0.0_r8
+              col_wf%qflx_evap_tot(c) = col_wf%qflx_evap_tot(c) + col_wf%qflx_evap_veg(c) + col_wf%qflx_evap_soi(c) + col_wf%qflx_tran_veg(c)
+              col_wf%qflx_floodc(c) = 0.0_r8
+              col_wf%qflx_surf(c) = -col_wf%qflx_top_soil(c)
+              col_wf%qflx_h2osfc_surf(c) = 0.0_r8
+              col_wf%qflx_qrgwl(c) = 0.0_r8
+              col_wf%qflx_drain(c) = 0.0_r8
+              col_wf%qflx_drain_perched(c) = 0.0_r8
+              col_wf%qflx_lateral(c) = 0.0_r8
+
+             ! do j = 1, nlevbed
+             !    if (h2osoi_liq(c,j)<0._r8)then
+             !       qflx_deficit(c) = qflx_deficit(c) - h2osoi_liq(c,j)
+             !    endif
+             !enddo
+           enddo
+        enddo
+
+
+        ! still using default hydrology for non-soil-column, but may change in future
+        soilroot_water_method = zengdecker_2009
+        ! here means ELM default soil water module still runs, while ATS runs prior to
+        ! in this case, ATS data won't return and over-ride ELM default runs.
         call SoilWater(bounds, num_hydrononsoic, filter_hydrononsoic, &
             num_urbanc, filter_urbanc, &
-            soilhydrology_vars, soilstate_vars, dtime)
+            soilhydrology_vars, soilstate_vars, nstep, dtime)
 
       else
       !------------------------------------------------------------------------------------
 
         call SoilWater(bounds, num_hydrologyc, filter_hydrologyc, num_urbanc, filter_urbanc, &
-            soilhydrology_vars, soilstate_vars, dtime)
+            soilhydrology_vars, soilstate_vars, nstep, dtime)
 
       !------------------------------------------------------------------------------------
       end if
@@ -275,7 +390,7 @@ contains
       end if
 
       !------------------------------------------------------------------------------------
-      if (use_pflotran .and. pf_hmode) then
+      if ( (use_pflotran .and. pf_hmode) ) then
 
         call WaterTable(bounds, num_hydrononsoic, filter_hydrononsoic, &
            num_urbanc, filter_urbanc, &
@@ -471,7 +586,8 @@ contains
       end do
 
       if ( (use_cn .or. use_fates) .and. &
-         .not.(use_pflotran .and. pf_hmode) ) then
+           (.not.(use_pflotran .and. pf_hmode)) .and. &
+           (.not.(use_ats .and. ats_hmode)) ) then
          ! Update soilpsi.
          ! ZMS: Note this could be merged with the following loop updating smp_l in the future.
          do j = 1, nlevgrnd
@@ -490,9 +606,19 @@ contains
                   psi = sucsat(c,j) * (-9.8e-6_r8) * (fsattmp)**(-bsw(c,j))  ! Mpa
                   soilpsi(c,j) = min(max(psi,-15.0_r8),0._r8)
 
+                  ! need to assign smp_l to 'col_ws'
+                  ! for later use, e.g. in emi/ats
+                  col_ws%smp_l(c,j) = -sucsat(c,j)*(fsattmp**(-bsw(c,j)))    ! mmH2O
+
                else
                   soilpsi(c,j) = -15.0_r8
+                  col_ws%smp_l(c,j) = -15.0_r8/(9.8e-6_r8)
                end if
+
+               ! need to assign value to col_ws%soilp
+               ! for later use, e.g. in emi/ats
+               col_ws%soilp(c,j) = soilpsi(c,j) + 0.1013250_r8  ! (TODO - adding the real 'forc_pbot')
+
             end do
          end do
       end if
