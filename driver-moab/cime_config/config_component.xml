@@ -766,6 +766,20 @@
       executable. This is currently only supported for certain machines.</desc>
   </entry>
 
+  <entry id="USE_ATS">
+    <type>logical</type>
+    <valid_values>TRUE,FALSE</valid_values>
+    <default_value>FALSE</default_value>
+    <group>build_def</group>
+    <file>env_build.xml</file>
+    <desc>TRUE implies linking to the ATS library - set
+    automatically by XXX_USE_ATS options (do not edit). Flag to turn
+    on linking to the ATS library. Currently this is used by
+    ELM. Note that ATS is a C++ library, so setting this
+    variable to TRUE will involve the inclusion of C++ code in the model
+    executable.This is currently only supported for certain machines.</desc>
+  </entry> 
+
   <entry id="GMAKE">
     <type>char</type>
     <valid_values></valid_values>
