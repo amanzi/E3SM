@@ -656,10 +656,7 @@ contains
           ! Fill the data list:
           !  - Data need during the initialization
           call em_ats(clump_rank)%Populate_L2E_Init_List(l2e_init_list(clump_rank))
-#ifdef ATS_READY
-          ! DON'T INITIALIZE ELM by ATS's states
-          call em_ats(clump_rank)%Populate_E2L_Init_List(e2l_init_list(clump_rank))
-#endif
+
           !  - Data need during timestepping
           call em_ats(clump_rank)%Populate_L2E_List(l2e_driver_list(iem))
           call em_ats(clump_rank)%Populate_E2L_List(e2l_driver_list(iem))

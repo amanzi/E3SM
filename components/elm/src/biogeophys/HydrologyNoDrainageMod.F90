@@ -606,18 +606,9 @@ contains
                   psi = sucsat(c,j) * (-9.8e-6_r8) * (fsattmp)**(-bsw(c,j))  ! Mpa
                   soilpsi(c,j) = min(max(psi,-15.0_r8),0._r8)
 
-                  ! need to assign smp_l to 'col_ws'
-                  ! for later use, e.g. in emi/ats
-                  col_ws%smp_l(c,j) = -sucsat(c,j)*(fsattmp**(-bsw(c,j)))    ! mmH2O
-
                else
                   soilpsi(c,j) = -15.0_r8
-                  col_ws%smp_l(c,j) = -15.0_r8/(9.8e-6_r8)
                end if
-
-               ! need to assign value to col_ws%soilp
-               ! for later use, e.g. in emi/ats
-               col_ws%soilp(c,j) = soilpsi(c,j) + 0.1013250_r8  ! (TODO - adding the real 'forc_pbot')
 
             end do
          end do

@@ -161,6 +161,13 @@ contains
              enddo
              cur_data%is_set = .true.
 
+          case (L2E_FLUX_TOP_SOI)
+             do fc = 1, num_filter
+                c = filter(fc)
+                cur_data%data_real_1d(c) = qflx_top_soi(c)
+             enddo
+             cur_data%is_set = .true.
+
           case (L2E_FLUX_INFL)
              do fc = 1, num_filter
                 c = filter(fc)
@@ -313,8 +320,6 @@ contains
          mflx_snowlyr => col_wf%mflx_snowlyr   , &
          qflx_evap_soi        => col_wf%qflx_evap_soi        , &
          qflx_infl            => col_wf%qflx_infl            , &
-         qflx_gross_evap_soil => col_wf%qflx_gross_evap_soil , &
-         qflx_gross_infl_soil => col_wf%qflx_gross_infl_soil , &
          qflx_rootsoi         => col_wf%qflx_rootsoi         , &
          qflx_tran_veg        => col_wf%qflx_tran_veg          &
          )

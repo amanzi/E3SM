@@ -8,18 +8,15 @@ module ExternalModelATSMod
 
   ! ELM modules
   use shr_kind_mod                 , only : r8 => shr_kind_r8
-  use spmdMod                      , only : masterproc, mpicom
+  use spmdMod                      , only : mpicom
   use decompMod                    , only : bounds_type
   use elm_varpar                   , only : nlevgrnd
   ! a few ats coupling options
   use elm_varctl                   , only : use_ats
-  use elm_varctl                   , only : ats_hmode
-  use elm_varctl                   , only : ats_chkout
 
   ! a few constants
-  use elm_varcon                   , only : denh2o, denice, tfrz, grav
+  use elm_varcon                   , only : denh2o, grav
   use histFileMod                  , only : hist_nhtfrq
-
 
   ! EMI modules
   use EMI_DataMod                  , only : emi_data_list, emi_data
@@ -31,9 +28,6 @@ module ExternalModelATSMod
   use EMI_SoilStateType_Constants
   use EMI_SoilHydrologyType_Constants
 
-  !use EMI_ColumnEnergyFluxType_Constants  ! need redo the list
-  use EMI_EnergyFluxType_Constants
-  use EMI_ColumnEnergyStateType_Constants
   use EMI_WaterFluxType_Constants
   use EMI_WaterStateType_Constants
   !
@@ -52,104 +46,107 @@ module ExternalModelATSMod
   ! EM data-type and procedures for elm-ats interface
   type, public, extends(em_base_type) :: em_ats_type
      ! ----------------------------------------------------------------------
-     ! Indicies required during the initialization
+     ! ELM --> ATS: Indicies required during the initialization
      ! ----------------------------------------------------------------------
-     integer :: index_l2e_init_col_active
-     integer :: index_l2e_init_col_type
-     integer :: index_l2e_init_col_filter
-     integer :: index_l2e_init_col_filter_num
-     integer :: index_l2e_init_col_zi
-     integer :: index_l2e_init_col_dz
-     integer :: index_l2e_init_col_z
-     integer :: index_l2e_init_col_area
+     ! NOTE: ELM is very unclear whether it is working in mm H2O or
+     ! kg/m^2 H2O, as it assumes a fixed density of water of 1000
+     ! km/m^3.  Documentation uses both interchangeably.
+     !
+     ! For ATS's sake, where density is not constant, but we interact
+     ! with ELM about water only, we presume that all ELM fluxes and
+     ! water state variables are in kg H2O / m^2.
+     
+     ! column filter
+     integer :: index_l2e_init_col_filter ! filter from all columns to ATS columns
+     integer :: index_l2e_init_col_filter_num ! number of columns
 
+     ! patch to column -- ATS requires 1 patch per column, this allows us to find it
      integer :: index_l2e_init_col_patch_i_beg
      integer :: index_l2e_init_col_patch_i_end
      integer :: index_l2e_init_col_num_patch
      integer :: index_l2e_init_col_pft_type
 
-     integer :: index_l2e_init_state_forc_pbot
-     integer :: index_l2e_init_state_h2osoi_liq
-     integer :: index_l2e_init_state_h2osoi_ice
-     integer :: index_l2e_init_state_soilp
-     integer :: index_l2e_init_state_smp
-     integer :: index_l2e_init_state_frac_h2osfc
-     integer :: index_l2e_init_state_h2osfc
-     integer :: index_l2e_init_state_zwt
+     ! initial water state
+     integer :: index_l2e_init_state_h2osoi_liq ! liquid soil water content [kg / m^2]
+     integer :: index_l2e_init_state_h2osfc     ! surface water [kg / m^2]
 
-     integer :: index_l2e_init_state_ts_soil
-     integer :: index_l2e_init_state_ts_snow
-     integer :: index_l2e_init_state_ts_h2osfc
-
-     integer :: index_l2e_init_parameter_watsatc
-     integer :: index_l2e_init_parameter_hksatc
-     integer :: index_l2e_init_parameter_bswc
-     integer :: index_l2e_init_parameter_sucsatc
-     integer :: index_l2e_init_parameter_effporosityc
+     ! initial / unchanging water parameters
+     integer :: index_l2e_init_parameter_watsat ! volumetric soil water at saturation (porosity) [-]
+     integer :: index_l2e_init_parameter_hksat  ! saturated hydraulic conductivity [kg H2O / m^2 / s]
+     integer :: index_l2e_init_parameter_bsw    ! C&H b [-]
+     integer :: index_l2e_init_parameter_sucsat ! C&H minimum soil suction / air entry pressure [mm]
 
      ! ----------------------------------------------------------------------
-     ! Indicies required during timestepping
+     ! ELM --> ATS: Indicies required during timestepping
      ! ----------------------------------------------------------------------
-     integer :: index_l2e_filter
-     integer :: index_l2e_filter_num
-     integer :: index_l2e_column_zi
-     integer :: index_l2e_column_dz
+     ! water state
+     integer :: index_l2e_state_h2osoi_liq      ! liquid soil water content [kg / m^2]
+     integer :: index_l2e_state_h2osfc          ! surface water [kg / m^2]
 
-     integer :: index_l2e_state_forc_pbot
-     integer :: index_l2e_state_h2osoi_liq
-     integer :: index_l2e_state_h2osoi_ice
-     integer :: index_l2e_state_soilp
-     integer :: index_l2e_state_smp
-     integer :: index_l2e_state_zwt
+     ! water potential fluxes
+     integer :: index_l2e_water_source          ! gross inputs of water to surface and soil [kg / m^2 / s]
+     integer :: index_l2e_flux_tran_veg         ! column-summed potential transpiration [kg / m^2 / s]
+     integer :: index_l2e_flux_evap             ! potential soil + surface water evaporation [kg / m^2 / s]
 
-     integer :: index_l2e_parameter_effporosityc
-     integer :: index_l2e_rootfrac_col
-     integer :: index_l2e_rootfrac_patch
+     ! timestep / dynamic water parameters
+     integer :: index_l2e_rootfrac_patch        ! root fraction (on patches/PFTs) [-]
 
-     integer :: index_e2l_state_h2osoi_liq
-     integer :: index_e2l_state_h2osoi_ice
-     integer :: index_e2l_state_soilp
-     integer :: index_e2l_state_smp
-     integer :: index_e2l_state_zwt
-     integer :: index_e2l_state_h2osfc
+     ! ----------------------------------------------------------------------
+     ! ATS --> ELM: Indicies required during timestepping
+     ! ----------------------------------------------------------------------
+     ! subsurface water state that must be consistent
+     integer :: index_e2l_state_h2osoi_liq      ! liquid soil water content [kg / m^2]
+     integer :: index_e2l_state_soilpsi         ! soil water pressure [Pa]
 
-     integer :: index_e2l_flux_rootsoi
-     integer :: index_e2l_flux_gross_infil
-     integer :: index_e2l_flux_gross_evap
-     integer :: index_e2l_flux_tran_veg
-     integer :: index_e2l_flux_rootsoi_frac
+     ! surface water state     
+     integer :: index_e2l_state_h2osfc          ! surface water [kg / m^2]
 
-     integer :: index_l2e_flux_gross_infil
-     integer :: index_l2e_flux_gross_evap
-     integer :: index_l2e_flux_tran_veg
+     ! water actual fluxes
+     integer :: index_e2l_flux_rootsoi          ! cell-based root water uptake [+ to plants] [kg / m^2 / s]
+     integer :: index_e2l_flux_tran_veg         ! column-summed actual transpiration [kg / m^2 / s]
+     integer :: index_e2l_flux_evap             ! actual soil + surface water evaporation [kg / m^2 / s]
 
-     integer :: index_l2e_flux_drain_vr
-     integer :: index_l2e_flux_surf
+     ! other things to consider as diagnostics, or consistency concerns
+     ! integer :: index_e2l_state_smp             ! liquid phase soil matric potential [mm H2O] ?
+     ! integer :: index_e2l_state_zwt             ! depth of water table [m] ?
+     
+     ! integer :: index_e2l_flux_gross_infil
+     ! integer :: index_e2l_flux_tran_veg
+     ! integer :: index_e2l_flux_rootsoi_frac
 
-     integer :: index_l2e_state_ts_soil
-     integer :: index_l2e_state_ts_snow
-     integer :: index_l2e_state_ts_h2osfc
+     ! integer :: index_l2e_flux_gross_infil
+     ! integer :: index_l2e_flux_gross_evap
+     ! integer :: index_l2e_flux_tran_veg
 
-     integer :: index_e2l_state_tsoil
-     integer :: index_l2e_flux_hs_soil
+     ! integer :: index_l2e_flux_drain_vr
+     ! integer :: index_l2e_flux_surf
 
+     ! integer :: index_l2e_state_ts_soil
+     ! integer :: index_l2e_state_ts_snow
+     ! integer :: index_l2e_state_ts_h2osfc
 
+     ! integer :: index_e2l_state_tsoil
+     ! integer :: index_l2e_flux_hs_soil
 
+     ! ----------------------------------------------------------------------
      ! save col and patch filters
-     integer                      :: filter_col_num
-     integer   , pointer          :: filter_col(:), filter_pft(:)
+     ! ----------------------------------------------------------------------
+     integer                   :: filter_col_num
+     integer, pointer          :: filter_col(:), filter_pft(:)
 
+     ! ----------------------------------------------------------------------
+     ! pointer to ATS instance
+     ! ----------------------------------------------------------------------
      type(elm_ats_interface_type) :: ats_interface
 
    contains
-
      procedure, public :: Populate_L2E_Init_List  => EM_ATS_Populate_L2E_Init_List
-     procedure, public :: Populate_E2L_Init_List  => EM_ATS_Populate_E2L_Init_List
      procedure, public :: Populate_L2E_List       => EM_ATS_Populate_L2E_List
      procedure, public :: Populate_E2L_List       => EM_ATS_Populate_E2L_List
      procedure, public :: Init                    => EM_ATS_Init
-     procedure, public :: Solve                   => EM_ATS_OneStep
+     procedure, public :: Solve                   => EM_ATS_Solve
      procedure, public :: Finalize                => EM_ATS_Finalize
+
   end type em_ats_type
 
   !---------------------------------------------------------------------------
@@ -179,37 +176,17 @@ contains
     number_em_stages = 1
     allocate(em_stages(number_em_stages))
     em_stages(1) = EM_INITIALIZATION_STAGE
-    id                                         = L2E_COLUMN_ACTIVE
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_col_active             = index
 
-    id                                         = L2E_COLUMN_TYPE
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_col_type               = index
-
-    id                                         = L2E_FILTER_SOILC              ! in future, this may be flexible
+    ! Filter information
+    !-----------------------
+    ! Note, currently only on soil columns, this could be extended?
+    id                                         = L2E_FILTER_SOILC              
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_init_col_filter             = index
 
-    id                                         = L2E_FILTER_NUM_SOILC          ! in future, this may be flexible
+    id                                         = L2E_FILTER_NUM_SOILC
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_init_col_filter_num         = index
-
-    id                                         = L2E_COLUMN_ZI
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_col_zi                 = index
-
-    id                                         = L2E_COLUMN_DZ
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_col_dz                 = index
-
-    id                                         = L2E_COLUMN_Z
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_col_z                  = index
-
-    id                                         = L2E_COLUMN_AREA
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_col_area               = index
 
     id                                         = L2E_COLUMN_PATCH_INDEX_BEGIN
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
@@ -226,140 +203,43 @@ contains
     id                                         = L2E_COLUMN_PFT_TYPE
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_init_col_pft_type           = index
-    !-------------
 
-    id                                        = L2E_STATE_VSFM_PROGNOSTIC_SOILP
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_soilp           = index
-
-    id                                        = L2E_STATE_SOIL_MATRIC_POTENTIAL_NLEVSOI
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_smp             = index
-
+    ! water state
+    !-----------------------
     id                                        = L2E_STATE_H2OSOI_LIQ_NLEVGRND
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_init_state_h2osoi_liq      = index
-
-    id                                        = L2E_STATE_H2OSOI_ICE_NLEVGRND
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_h2osoi_ice      = index
-
-    !id                                        = L2E_STATE_FORC_PBOT_DOWNSCALED
-    !call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    !this%index_l2e_init_state_forc_pbot       = index
-
-    id                                        = L2E_STATE_TSOIL_NLEVGRND_COL
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_ts_soil         = index
-
-    id                                        = L2E_STATE_TSNOW_COL
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_ts_snow         = index
-
-    id                                        = L2E_STATE_TH2OSFC_COL
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_ts_h2osfc       = index
-
-    id                                        = L2E_STATE_FRAC_H2OSFC
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_frac_h2osfc     = index
 
     id                                        = L2E_STATE_H2OSFC
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_init_state_h2osfc          = index
 
-    id                                        = L2E_STATE_WTD
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_state_zwt             = index
-
-    !--------
+    ! parameters
+    !-----------------------
     id                                         = L2E_PARAMETER_WATSATC
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_parameter_watsatc      = index
+    this%index_l2e_init_parameter_watsat       = index
 
     id                                         = L2E_PARAMETER_HKSATC
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_parameter_hksatc       = index
+    this%index_l2e_init_parameter_hksat        = index
 
     id                                         = L2E_PARAMETER_BSWC
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_parameter_bswc         = index
+    this%index_l2e_init_parameter_bsw          = index
 
     id                                         = L2E_PARAMETER_SUCSATC
     call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_parameter_sucsatc      = index
-
-    id                                         = L2E_PARAMETER_EFFPOROSITYC
-    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_init_parameter_effporosityc = index
+    this%index_l2e_init_parameter_sucsat       = index
 
     deallocate(em_stages)
-
   end subroutine EM_ATS_Populate_L2E_Init_List
-
-  !------------------------------------------------------------------------
-  subroutine EM_ATS_Populate_E2L_Init_List(this, e2l_init_list)
-    !
-    !
-    ! !DESCRIPTION:
-    ! Create a list of all variables to be returned by ATS from ELM
-    !
-    implicit none
-    !
-    ! !ARGUMENTS:
-    class(em_ats_type)                   :: this
-    class(emi_data_list) , intent(inout) :: e2l_init_list
-    !
-    ! !LOCAL VARIABLES:
-    class(emi_data)      , pointer       :: data
-    integer              , pointer       :: em_stages(:)
-    integer                              :: number_em_stages
-    integer                              :: id
-    integer                              :: index
-
-    number_em_stages = 1
-    allocate(em_stages(number_em_stages))
-    em_stages(1) = EM_INITIALIZATION_STAGE
-
-#ifdef ATS_READY
-  ! DON'T INITIALIZE ELM by ATS's states
-    id                                        = E2L_STATE_H2OSOI_LIQ
-    call e2l_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_e2l_init_state_h2osoi_liq      = index
-
-    id                                        = E2L_STATE_H2OSOI_ICE
-    call e2l_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_e2l_init_state_h2osoi_ice      = index
-
-    id                                        = E2L_STATE_SOIL_MATRIC_POTENTIAL
-    call e2l_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_e2l_init_state_smp             = index
-
-    id                                        = E2L_STATE_VSFM_PROGNOSTIC_SOILP
-    call e2l_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_e2l_init_state_soilp           = index
-
-    id                                        = E2L_STATE_WTD
-    call e2l_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_e2l_init_state_zwt             = index
-
-    if (em_stages(1) == EM_ATS_SOIL_THYDRO_STAGE .or. &
-        em_stages(1) == EM_ATS_SOIL_THBGC_STAGE) then
-      id                                      = E2L_STATE_TSOIL_NLEVGRND_COL
-      call e2l_init_list%AddDataByID(id, number_em_stages, em_stages, index)
-      this%index_e2l_init_state_tsoil         = index
-    end if
-#endif
-
-    deallocate(em_stages)
-
-  end subroutine EM_ATS_Populate_E2L_Init_List
 
   !------------------------------------------------------------------------
   subroutine EM_ATS_Populate_L2E_List(this, l2e_list)
     !
     ! !DESCRIPTION:
-    ! Create a list of all variables needed by ATS from ELM
+    ! Create a list of all variables needed by ATS from ELM each timestep
     !
     implicit none
     !
@@ -379,39 +259,15 @@ contains
     allocate(em_stages(number_em_stages))
     em_stages(1) = EM_ATS_SOIL_HYDRO_STAGE
 
-    id                                   = L2E_FILTER_SOILC              ! in future, this may be flexible
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_filter                = index
-
-    id                                   = L2E_FILTER_NUM_SOILC          ! in future, this may be flexible
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_filter_num            = index
-
-    id                                   = L2E_COLUMN_ZI
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_column_zi             = index
-
-    id                                   = L2E_COLUMN_DZ
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_column_dz             = index
-
-    !-------------
-    id                                   = L2E_STATE_VSFM_PROGNOSTIC_SOILP
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_state_soilp           = index
-
-    id                                   = L2E_STATE_SOIL_MATRIC_POTENTIAL_NLEVSOI
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_state_smp             = index
-
     id                                   = L2E_STATE_H2OSOI_LIQ_NLEVGRND
     call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_state_h2osoi_liq      = index
 
-    id                                   = L2E_STATE_H2OSOI_ICE_NLEVGRND
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_state_h2osoi_ice      = index
+    id                                        = L2E_STATE_H2OSFC
+    call l2e_init_list%AddDataByID(id, number_em_stages, em_stages, index)
+    this%index_l2e_init_state_h2osfc          = index
 
+    
     id                                   = L2E_FLUX_GROSS_INFL_SOIL
     call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_flux_gross_infil      = index
@@ -435,10 +291,6 @@ contains
     id                                   = L2E_FLUX_SURF
     call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
     this%index_l2e_flux_surf             = index
-
-    id                                   = L2E_PARAMETER_EFFPOROSITYC
-    call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
-    this%index_l2e_parameter_effporosityc = index
 
     id                                   = L2E_PARAMETER_ROOTFR_COL
     call l2e_list%AddDataByID(id, number_em_stages, em_stages, index)
@@ -850,7 +702,6 @@ contains
     type(bounds_type)   , intent(in) :: bounds_clump
     integer           :: fc, c, j
     integer           :: nc, nz
-    real(r8), pointer :: soil_effporo(:,:), soil_effporo_ats(:,:)
     real(r8), pointer :: pft_rootfrac(:,:), pft_rootfrac_ats(:,:)
     real(r8), pointer :: col_rootfrac(:,:), col_rootfrac_ats(:,:)
     integer,  pointer :: filter_patch(:)
@@ -859,9 +710,6 @@ contains
     
     nc = this%filter_col_num
     nz = nlevgrnd
-
-    allocate(soil_effporo_ats(nc, nz))
-    call l2e_list%GetPointerToReal2D(this%index_l2e_parameter_effporosityc, soil_effporo)
 
     allocate(col_rootfrac_ats(nc, nz))
     call l2e_list%GetPointerToReal2D(this%index_l2e_rootfrac_col, col_rootfrac)
@@ -873,11 +721,9 @@ contains
       end do
     end do
 
-    call this%ats_interface%setsoilveg_dyn(soil_effporo_ats, col_rootfrac_ats)
+    call this%ats_interface%setsoilveg_dyn(col_rootfrac_ats)
 
     deallocate(col_rootfrac_ats)
-    deallocate(soil_effporo_ats)
-
   end subroutine set_dyn_properties
 
   !------------------------------------------------------------------------

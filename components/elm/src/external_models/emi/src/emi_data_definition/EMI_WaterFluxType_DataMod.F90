@@ -135,6 +135,17 @@ contains
        dim2_end_name  =  dimname_nlevgrnd
        data_found   =  .true.
 
+    case(L2E_FLUX_TOP_SOI)
+       id_val         =  L2E_FLUX_TOP_SOI
+       name_val       =  'Net water input into soil'
+       long_name_val  =  'Net water input into soil: ELM to EM'
+       units_val      =  '[mm H2O/s]'
+       is_real_type   =  .true.
+       ndim           =  2
+       dim1_beg_name  =  dimname_begc
+       dim1_end_name  =  dimname_endc
+       data_found   =  .true.
+
     case(L2E_FLUX_INFL)
        id_val         =  L2E_FLUX_INFL
        name_val       =  'Infiltration'

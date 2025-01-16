@@ -3,20 +3,18 @@ module ExternalModelATS_createMod
 #ifdef USE_ATS_LIB
 
   !-----------------------------------------------------------------------
-  ! !DESCRIPTION:
+  ! !DESCRIPTION: Calls out to ATS for integrated surface-subsurface
+  ! hydrology.
   !
 
   ! ELM modules
-  use shr_kind_mod                 , only : r8 => shr_kind_r8
-  use spmdMod                      , only : masterproc, mpicom
-  use decompMod                    , only : bounds_type
+  use spmdMod                      , only : mpicom
+
   ! a few ats coupling options
   use elm_varctl                   , only : use_ats, use_ats_mesh
-
-  !
   use ExternalModelATS_readnlMod   , only : ats_inputdir, ats_inputfile
 
-  ! C-F interface
+  ! ATS interface
   use ELM_ATS_InterfaceMod
 
   !
@@ -46,9 +44,9 @@ contains
     !-----------------------------------------------------------------------
     !
     ! create an ATS driver object
+    ! 'mpicom' is communicator group id for land component
     elmats_interface = ats_create(ats_inputdir, ats_inputfile, mpicom)
 
-    ! 'mpicom' is communicator group id for land component
     print *, ''
     print *, '============================================================='
     print *,''
@@ -58,14 +56,6 @@ contains
     print *, 'communicator id: ', mpicom
     print *, '============================================================='
     print *, ''
-    !
-
-
-    if (use_ats .and. use_ats_mesh) then
-      ! pass mesh from ATS to ELM locally
-      call get_mesh_local(elmats_interface)  ! in progress .......
-
-    end if
 
   end subroutine EM_ATS_create
 
