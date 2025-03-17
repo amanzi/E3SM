@@ -34,6 +34,7 @@ module BalanceCheckMod
   save
   !
   ! !PUBLIC MEMBER FUNCTIONS:
+  public :: ColWaterBalance       ! Function to calculate water balance
   public :: BeginColWaterBalance  ! Initialize water balance check
   public :: ColWaterBalanceCheck  ! Water and energy balance check
   public :: BeginGridWaterBalance
@@ -42,14 +43,14 @@ module BalanceCheckMod
 
 contains
 
-  !-----------------------------------------------------------------------
-  subroutine BeginColWaterBalance(bounds, &
-       num_nolakec, filter_nolakec, num_lakec, filter_lakec, &
-       num_hydrologyc, filter_hydrologyc, &
-       soilhydrology_vars)
+  !---------------------------------------------------------------------
+  subroutine ColWaterBalance(bounds, &
+    num_nolakec, filter_nolakec, num_lakec, filter_lakec, &
+    num_hydrologyc, filter_hydrologyc, &
+    soilhydrology_vars, watbal)
     !
     ! !DESCRIPTION:
-    ! Initialize column-level water balance at beginning of time step
+    ! Calculate column-level water balance 
     !$acc routine seq
     ! !USES:
     use subgridAveMod    , only : p2c, c2g
@@ -67,6 +68,7 @@ contains
     integer                   , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
     integer                   , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
     type(soilhydrology_type)  , intent(inout) :: soilhydrology_vars
+    real(r8)                  , intent(out)   :: watbal(:)            ! water balance for given column
     !
     ! !LOCAL VARIABLES:
     integer :: c, p, f, j, fc                  ! indices
@@ -74,18 +76,17 @@ contains
     !-----------------------------------------------------------------------
 
     associate(                                                         &
-         zi                     =>    col_pp%zi                                  , & ! Input:  [real(r8) (:,:) ]  interface level below a "z" level (m)
-         h2ocan_patch           =>    veg_ws%h2ocan               , & ! Input:  [real(r8) (:)   ]  canopy water (mm H2O) (pft-level)
-         h2osfc                 =>    col_ws%h2osfc                 , & ! Input:  [real(r8) (:)   ]  surface water (mm)
-         h2osno                 =>    col_ws%h2osno                 , & ! Input:  [real(r8) (:)   ]  snow water (mm H2O)
-         h2osoi_ice             =>    col_ws%h2osoi_ice             , & ! Input:  [real(r8) (:,:) ]  ice lens (kg/m2)
-         h2osoi_liq             =>    col_ws%h2osoi_liq             , & ! Input:  [real(r8) (:,:) ]  liquid water (kg/m2)
-         total_plant_stored_h2o =>    col_ws%total_plant_stored_h2o , & ! Input: [real(r8) (:) dynamic water stored in plants
-         zwt                    =>    soilhydrology_vars%zwt_col                 , & ! Input:  [real(r8) (:)   ]  water table depth (m)
-         wa                     =>    soilhydrology_vars%wa_col                  , & ! Output: [real(r8) (:)   ]  water in the unconfined aquifer (mm)
-         h2ocan_col             =>    col_ws%h2ocan                 , & ! Output: [real(r8) (:)   ]  canopy water (mm H2O) (column level)
-         begwb                  =>    col_ws%begwb                    & ! Output: [real(r8) (:)   ]  water mass begining of the time step
-         )
+          zi                     =>    col_pp%zi                     , & ! Input:  [real(r8) (:,:) ]  interface level below a "z" level (m)
+          h2ocan_patch           =>    veg_ws%h2ocan                 , & ! Input:  [real(r8) (:)   ]  canopy water (mm H2O) (pft-level)
+          h2osfc                 =>    col_ws%h2osfc                 , & ! Input:  [real(r8) (:)   ]  surface water (mm)
+          h2osno                 =>    col_ws%h2osno                 , & ! Input:  [real(r8) (:)   ]  snow water (mm H2O)
+          h2osoi_ice             =>    col_ws%h2osoi_ice             , & ! Input:  [real(r8) (:,:) ]  ice lens (kg/m2)
+          h2osoi_liq             =>    col_ws%h2osoi_liq             , & ! Input:  [real(r8) (:,:) ]  liquid water (kg/m2)
+          total_plant_stored_h2o =>    col_ws%total_plant_stored_h2o , & ! Input: [real(r8) (:) dynamic water stored in plants
+          zwt                    =>    soilhydrology_vars%zwt_col    , & ! Input:  [real(r8) (:)   ]  water table depth (m)
+          wa                     =>    soilhydrology_vars%wa_col     , & ! Output: [real(r8) (:)   ]  water in the unconfined aquifer (mm)
+          h2ocan_col             =>    col_ws%h2ocan                 , & ! Output: [real(r8) (:)   ]  canopy water (mm H2O) (column level)
+          )
 
       ! Determine beginning water balance for time step
       ! pft-level canopy water averaged to column
@@ -95,32 +96,32 @@ contains
             h2ocan_col(bounds%begc:bounds%endc))
 
       if (use_var_soil_thick) then
-	       do f = 1, num_hydrologyc
+          do f = 1, num_hydrologyc
             c = filter_hydrologyc(f)
-      	    wa(c) = 0._r8                ! Made 0 for variable soil thickness
-	       end do
+            wa(c) = 0._r8                ! Made 0 for variable soil thickness
+          end do
       end if
 
       do f = 1, num_nolakec
-         c = filter_nolakec(f)
-         if (col_pp%itype(c) == icol_roof .or. col_pp%itype(c) == icol_sunwall &
+          c = filter_nolakec(f)
+          if (col_pp%itype(c) == icol_roof .or. col_pp%itype(c) == icol_sunwall &
               .or. col_pp%itype(c) == icol_shadewall .or. col_pp%itype(c) == icol_road_imperv) then
-            begwb(c) = h2ocan_col(c) + h2osno(c)
-         else
-            begwb(c) = h2ocan_col(c) + h2osno(c) + h2osfc(c) + wa(c)
-         end if
+            watbal(c) = h2ocan_col(c) + h2osno(c)
+          else
+            watbal(c) = h2ocan_col(c) + h2osno(c) + h2osfc(c) + wa(c)
+          end if
 
       end do
 
       do j = 1, nlevgrnd
-         do f = 1, num_nolakec
+          do f = 1, num_nolakec
             c = filter_nolakec(f)
             if ((col_pp%itype(c) == icol_sunwall .or. col_pp%itype(c) == icol_shadewall &
-                 .or. col_pp%itype(c) == icol_roof) .and. j > nlevurb) then
+                  .or. col_pp%itype(c) == icol_roof) .and. j > nlevurb) then
             else
-               begwb(c) = begwb(c) + h2osoi_ice(c,j) + h2osoi_liq(c,j)
+                watbal(c) = watbal(c) + h2osoi_ice(c,j) + h2osoi_liq(c,j)
             end if
-         end do
+          end do
       end do
 
       ! ---------------------------------------------------------------------------------
@@ -131,18 +132,72 @@ contains
       ! (rgk 02-02-2017)
       ! ---------------------------------------------------------------------------------
       do f = 1, num_nolakec
-         c = filter_nolakec(f)
-         begwb(c) = begwb(c) + total_plant_stored_h2o(c)
+          c = filter_nolakec(f)
+          watbal(c) = watbal(c) + total_plant_stored_h2o(c)
       end do
 
       do f = 1, num_lakec
-         c = filter_lakec(f)
-         begwb(c) = h2osno(c)
+          c = filter_lakec(f)
+          watbal(c) = h2osno(c)
       end do
 
     end associate
+  
+  end subroutine
+  !-----------------------------------------------------------------------
+  subroutine BeginColWaterBalance(bounds, &
+    num_nolakec, filter_nolakec, num_lakec, filter_lakec, &
+    num_hydrologyc, filter_hydrologyc, &
+    soilhydrology_vars)
+
+    ! !DESCRIPTION:
+    ! Calculate column-level water balance at beginning of time step
+    !$acc routine seq
+
+    ! !ARGUMENTS:
+    type(bounds_type)         , intent(in)    :: bounds
+    integer                   , intent(in)    :: num_nolakec          ! number of column non-lake points in column filter
+    integer                   , intent(in)    :: filter_nolakec(:)    ! column filter for non-lake points
+    integer                   , intent(in)    :: num_lakec            ! number of column non-lake points in column filter
+    integer                   , intent(in)    :: filter_lakec(:)      ! column filter for non-lake points
+    integer                   , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+    integer                   , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+    type(soilhydrology_type)  , intent(inout) :: soilhydrology_vars
+
+    call ColWaterBalance(bounds, &
+      num_nolakec, filter_nolakec, num_lakec, filter_lakec, &
+      num_hydrologyc, filter_hydrologyc, &
+      soilhydrology_vars, col_ws%begwb )
 
   end subroutine BeginColWaterBalance
+
+   !-----------------------------------------------------------------------
+  subroutine EndColWaterBalance(bounds, &
+    num_nolakec, filter_nolakec, num_lakec, filter_lakec, &
+    num_hydrologyc, filter_hydrologyc, &
+    soilhydrology_vars)
+
+    ! !DESCRIPTION:
+    ! Calculate column-level water balance at end of time step
+    !$acc routine seq
+
+    ! !ARGUMENTS:
+    type(bounds_type)         , intent(in)    :: bounds
+    integer                   , intent(in)    :: num_nolakec          ! number of column non-lake points in column filter
+    integer                   , intent(in)    :: filter_nolakec(:)    ! column filter for non-lake points
+    integer                   , intent(in)    :: num_lakec            ! number of column non-lake points in column filter
+    integer                   , intent(in)    :: filter_lakec(:)      ! column filter for non-lake points
+    integer                   , intent(in)    :: num_hydrologyc       ! number of column soil points in column filter
+    integer                   , intent(in)    :: filter_hydrologyc(:) ! column filter for soil points
+    type(soilhydrology_type)  , intent(inout) :: soilhydrology_vars
+
+    call ColWaterBalance(bounds, &
+      num_nolakec, filter_nolakec, num_lakec, filter_lakec, &
+      num_hydrologyc, filter_hydrologyc, &
+      soilhydrology_vars, col_ws%endwb )
+
+
+  end subroutine EndColWaterBalance
 
    !-----------------------------------------------------------------------
    subroutine ColWaterBalanceCheck( bounds, num_do_smb_c, filter_do_smb_c, &
@@ -325,6 +380,9 @@ contains
        end do
 
        ! Water balance check
+
+       ! get endwb:
+       
 
        do c = bounds%begc, bounds%endc
 
