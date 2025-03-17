@@ -116,6 +116,7 @@ contains
     real(r8) :: heatsum(bounds%begc:bounds%endc)                ! used in case above [J/m^2]
     real(r8) :: snowmass                                        ! liquid+ice snow mass in a layer [kg/m2]
     real(r8) :: snowcap_scl_fct                                 ! temporary factor used to correct for snow capping
+    real(r8) :: endwb_int(bounds%begc:bounds%endc)              ! RF - internal endwb value while debugging for consistent.
     real(r8), parameter :: snow_bd = 250._r8                    ! assumed snow bulk density (for lakes w/out resolved snow layers) [kg/m^3]
                                                                 ! Should only be used for frost below.
     !-----------------------------------------------------------------------
@@ -148,7 +149,7 @@ contains
 
          do_capsnow           =>  col_ws%do_capsnow        , & ! Input:  [logical  (:)   ]  true => do snow capping
          begwb                =>  col_ws%begwb             , & ! Input:  [real(r8) (:)   ]  water mass begining of the time step
-         endwb                =>  col_ws%endwb             , & ! Output: [real(r8) (:)   ]  water mass end of the time step
+!         endwb                =>  col_ws%endwb             , & ! Output: [real(r8) (:)   ]  water mass end of the time step
          h2osoi_liq_depth_intg=>  col_ws%h2osoi_liq_depth_intg, & ! Output: [real(r8) (:)   ]  grid-level depth integrated liquid soil water
          h2osoi_ice_depth_intg=>  col_ws%h2osoi_ice_depth_intg, & ! Output: [real(r8) (:)   ]  grid-level depth integrated ice soil water
          snw_rds              =>  col_ws%snw_rds           , & ! Output: [real(r8) (:,:) ]  effective snow grain radius (col,lyr) [microns, m^-6]
@@ -695,7 +696,7 @@ contains
       do j = 1, nlevgrnd
          do fc = 1, num_lakec
             c = filter_lakec(fc)
-            endwb(c) = endwb(c) + h2osoi_ice(c,j) + h2osoi_liq(c,j)
+            endwb_int(c) = endwb_int(c) + h2osoi_ice(c,j) + h2osoi_liq(c,j)
             h2osoi_vol(c,j) = h2osoi_liq(c,j)/(dz(c,j)*denh2o) + h2osoi_ice(c,j)/(dz(c,j)*denice)
          end do
       end do
@@ -725,12 +726,12 @@ contains
                   qflx_snwcp = qflx_snwcp_ice_col(c)
                end if
                qflx_qrgwl(c) = forc_rain(t) + forc_snow(t) - qflx_evap_tot(p) - qflx_snwcp + &
-               qflx_floodg(g) - (endwb(c) + wslake(c) -begwb(c))/dtime
+               qflx_floodg(g) - (endwb_int(c) + wslake(c) -begwb(c))/dtime
             end if
             wslake(c) = (forc_rain(t) + forc_snow(t) - qflx_evap_tot(p) - &
                 qflx_snwcp_ice(p) + qflx_floodg(g) - qflx_qrgwl(c)) * dtime - &
-                (endwb(c) - begwb(c))
-            endwb(c) = endwb(c) + wslake(c)
+                (endwb_int(c) - begwb(c))
+            endwb_int(c) = endwb_int(c) + wslake(c)
          else
             if (.not. use_firn_percolation_and_compaction) then
                qflx_snwcp = qflx_snwcp_ice(p)
@@ -738,7 +739,7 @@ contains
                qflx_snwcp = qflx_snwcp_ice_col(c)
             end if
             qflx_qrgwl(c) = forc_rain(t) + forc_snow(t) - qflx_evap_tot(p) - qflx_snwcp - &
-                (endwb(c)-begwb(c))/dtime + qflx_floodg(g)
+                (endwb_int(c)-begwb(c))/dtime + qflx_floodg(g)
          end if
 
          qflx_floodc(c)    = qflx_floodg(g)

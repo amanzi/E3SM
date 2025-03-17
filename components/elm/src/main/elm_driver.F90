@@ -27,7 +27,7 @@ module elm_driver
   use abortutils             , only : endrun
   !
   use dynSubgridDriverMod    , only : dynSubgrid_driver
-  use BalanceCheckMod        , only : BeginColWaterBalance, ColWaterBalanceCheck
+  use BalanceCheckMod        , only : BeginColWaterBalance, EndColWaterBalance, ColWaterBalanceCheck
   use BalanceCheckMod        , only : BeginGridWaterBalance, GridBalanceCheck
   !
   use CanopyTemperatureMod   , only : CanopyTemperature ! (formerly Biogeophysics1Mod)
@@ -1311,6 +1311,11 @@ contains
        ! ============================================================================
 
        call t_startf('balchk')
+       call EndColWaterBalance(bounds_clump,                &
+            filter(nc)%num_nolakec, filter(nc)%nolakec,       &
+            filter(nc)%num_lakec, filter(nc)%lakec,           &
+            filter(nc)%num_hydrologyc, filter(nc)%hydrologyc, &
+            soilhydrology_vars )
        call ColWaterBalanceCheck(bounds_clump, &
             filter(nc)%num_do_smb_c, filter(nc)%do_smb_c, &
             atm2lnd_vars, glc2lnd_vars, solarabs_vars,  &
