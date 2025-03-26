@@ -22,7 +22,7 @@ module ColumnDataType
   use elm_varcon      , only : c13ratio, c14ratio, secspday
   use elm_varctl      , only : use_fates, use_fates_planthydro, create_glacier_mec_landunit
   use elm_varctl      , only : use_hydrstress, use_crop
-  use elm_varctl      , only : use_alquimia
+  use elm_varctl      , only : use_alquimia, use_ats
   use elm_varctl      , only : bound_h2osoi, use_cn, iulog, use_vertsoilc, spinup_state
   use elm_varctl      , only : ero_ccycle
   use elm_varctl      , only : use_elm_interface, use_pflotran, pf_cmode
@@ -1497,6 +1497,7 @@ contains
           avgflag='A', long_name='soil pressure (vegetated landunits only)', &
            ptr_col=this%soilp, l2g_scale_type='veg', default='inactive')
 
+    if (use_ats) then
       this%h2osoi_liqvol(begc:endc, :) = spval
       call hist_addfld2d (fname='H2OSOIL_LIQVOL',  units='m3/m3 bulk',  type2d='levgrnd', &
           avgflag='A', long_name='soil liq water vol fraction from external model, e.g. ATS', &
