@@ -116,7 +116,6 @@ contains
     real(r8) :: heatsum(bounds%begc:bounds%endc)                ! used in case above [J/m^2]
     real(r8) :: snowmass                                        ! liquid+ice snow mass in a layer [kg/m2]
     real(r8) :: snowcap_scl_fct                                 ! temporary factor used to correct for snow capping
-    real(r8) :: endwb_int(bounds%begc:bounds%endc)              ! RF - internal endwb value while debugging for consistent.
     real(r8), parameter :: snow_bd = 250._r8                    ! assumed snow bulk density (for lakes w/out resolved snow layers) [kg/m^3]
                                                                 ! Should only be used for frost below.
     !-----------------------------------------------------------------------
@@ -149,7 +148,7 @@ contains
 
          do_capsnow           =>  col_ws%do_capsnow        , & ! Input:  [logical  (:)   ]  true => do snow capping
          begwb                =>  col_ws%begwb             , & ! Input:  [real(r8) (:)   ]  water mass begining of the time step
-!         endwb                =>  col_ws%endwb             , & ! Output: [real(r8) (:)   ]  water mass end of the time step
+         endwb_int            =>  col_ws%endwb_int             , & ! Output: [real(r8) (:)   ]  water mass end of the time step
          h2osoi_liq_depth_intg=>  col_ws%h2osoi_liq_depth_intg, & ! Output: [real(r8) (:)   ]  grid-level depth integrated liquid soil water
          h2osoi_ice_depth_intg=>  col_ws%h2osoi_ice_depth_intg, & ! Output: [real(r8) (:)   ]  grid-level depth integrated ice soil water
          snw_rds              =>  col_ws%snw_rds           , & ! Output: [real(r8) (:,:) ]  effective snow grain radius (col,lyr) [microns, m^-6]
@@ -690,7 +689,7 @@ contains
 
       do fc = 1, num_lakec
          c = filter_lakec(fc)
-         endwb(c) = h2osno(c)
+         endwb_int(c) = h2osno(c)
       end do
 
       do j = 1, nlevgrnd

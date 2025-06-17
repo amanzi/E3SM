@@ -85,7 +85,7 @@ contains
           total_plant_stored_h2o =>    col_ws%total_plant_stored_h2o , & ! Input: [real(r8) (:) dynamic water stored in plants
           zwt                    =>    soilhydrology_vars%zwt_col    , & ! Input:  [real(r8) (:)   ]  water table depth (m)
           wa                     =>    soilhydrology_vars%wa_col     , & ! Output: [real(r8) (:)   ]  water in the unconfined aquifer (mm)
-          h2ocan_col             =>    col_ws%h2ocan                 , & ! Output: [real(r8) (:)   ]  canopy water (mm H2O) (column level)
+          h2ocan_col             =>    col_ws%h2ocan                   & ! Output: [real(r8) (:)   ]  canopy water (mm H2O) (column level)
           )
 
       ! Determine beginning water balance for time step
@@ -247,6 +247,10 @@ contains
      real(r8) :: forc_rain_col(bounds%begc:bounds%endc) ! column level rain rate [mm/s]
      real(r8) :: forc_snow_col(bounds%begc:bounds%endc) ! column level snow rate [mm/s]
      real(r8) :: sol_err_th                             ! solar radiation imbalance threshold
+
+     ! RPF old mass balances - they can be local variables as the failure check is within 
+     ! this subroutine.
+     real(r8) :: errh2o_old(bounds%begc:bounds%endc), dwb_old(bounds%begc:bounds%endc)
      !-----------------------------------------------------------------------
 
      associate(                                                                         &
@@ -267,6 +271,7 @@ contains
           errh2o                     =>    col_ws%errh2o                 , & ! Output: [real(r8) (:)   ]  water conservation error (mm H2O)
           errh2osno                  =>    col_ws%errh2osno              , & ! Output: [real(r8) (:)   ]  error in h2osno (kg m-2)
           endwb                      =>    col_ws%endwb                  , & ! Output: [real(r8) (:)   ]  water mass end of the time step
+          endwb_int                  =>    col_ws%endwb_int              , & ! Input:  [real(r8) (:)   ]  taken from elsewhere...
           total_plant_stored_h2o_col =>    col_ws%total_plant_stored_h2o , & ! Input: [real(r8) (:)   ]  water mass in plant tissues (kg m-2)
           dwb                        =>    col_wf%dwb                     , & ! Output: [real(r8) (:)   ]  change of water mass within the time step [kg/m2/s]
           qflx_rain_grnd_col         =>    col_wf%qflx_rain_grnd          , & ! Input:  [real(r8) (:)   ]  rain on ground after interception (mm H2O/s) [+]
@@ -382,8 +387,9 @@ contains
        ! Water balance check
 
        ! get endwb:
-       
-
+       ! RPF notes 6/17/25 - this should have errored, I believe, since endwb was not calculated here....
+       ! actually looks like endwb is calculated in elm_driver. so, maybe the thing to do here is to make
+       ! a second errh2o variable that calculates endwb using the old method.
        do c = bounds%begc, bounds%endc
 
           ! add qflx_drain_perched and qflx_flood
@@ -397,12 +403,36 @@ contains
                   - qflx_lateral(c) + qflx_h2orof_drain(c)) * dtime
              dwb(c) = (endwb(c)-begwb(c))/dtime
 
+            errh2o_old(c) = endwb_int(c) - begwb(c) &
+                  - (forc_rain_col(c) + forc_snow_col(c)  + qflx_floodc(c) + qflx_from_uphill(c) &
+                  + qflx_surf_irrig_col(c) + qflx_over_supply_col(c) &
+                  - qflx_evap_tot(c) - qflx_surf(c)  - qflx_h2osfc_surf(c) - qflx_to_downhill(c) &
+                  - qflx_qrgwl(c) - qflx_drain(c) - qflx_drain_perched(c) - qflx_snwcp_ice(c) - qflx_ice_runoff_xs(c) &
+                  - qflx_lateral(c) + qflx_h2orof_drain(c)) * dtime
+             dwb_old(c) = (endwb_int(c)-begwb(c))/dtime
+
           else
 
              errh2o(c) = 0.0_r8
              dwb(c)    = 0.0_r8
+             errh2o_old(c) = 0.0_r8
+             dwb_old(c) = 0.0_r8
 
           end if
+
+          ! equality test between errh2o and errh2o_old. If old mass balance is actually correct they should be equal.
+          if (abs(errh2o(c) - errh2o_old(c)) .ge. 1e-10_r8) then
+            write(iulog,*)'WARNING:  water balance error ',&
+               ' nstep= ',nstep, &
+               ' local indexc= ',indexc,&
+               ' errh2o= ',errh2o(indexc)    
+             write(iulog,*)'endwb                      = ',endwb(indexc)
+             write(iulog,*)'begwb                      = ',begwb(indexc)
+             write(iulog,*)'endwb_int                  = ',endwb_int(indexc)
+             write(iulog,*)'errh2o                     = ',errh2o(indexc)
+             write(iulog,*)'errh2o_old                 = ',errh2o_old(indexc)
+          endif  
+
 
        end do
 

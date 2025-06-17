@@ -157,6 +157,7 @@ module ColumnDataType
     ! Balance checks
     real(r8), pointer :: begwb              (:)   => null() ! water mass begining of the time step (kg/m2)
     real(r8), pointer :: endwb              (:)   => null() ! water mass end of the time step (kg/m2)
+    real(r8), pointer :: endwb_int          (:)   => null() ! water mass end of the time step (kg/m2) <- USING OLD DISTRIBUTED METHOD
     real(r8), pointer :: errh2o             (:)   => null() ! water conservation error (kg/m2)
     real(r8), pointer :: errh2osno          (:)   => null() ! snow water conservation error(kg/m2)
     real(r8), pointer :: h2osoi_liq_depth_intg(:) => null() ! grid-level depth integrated liquid soil water
@@ -1449,6 +1450,7 @@ contains
     allocate(this%finundated         (begc:endc))                     ; this%finundated         (:)   = spval
     allocate(this%begwb              (begc:endc))                     ; this%begwb              (:)   = spval
     allocate(this%endwb              (begc:endc))                     ; this%endwb              (:)   = spval
+    allocate(this%endwb_int          (begc:endc))                     ; this%endwb_int          (:)   = spval
     allocate(this%errh2o             (begc:endc))                     ; this%errh2o             (:)   = spval
     allocate(this%errh2osno          (begc:endc))                     ; this%errh2osno          (:)   = spval
     allocate(this%h2osoi_liq_depth_intg(begc:endc))                   ; this%h2osoi_liq_depth_intg(:) = spval
@@ -1900,8 +1902,13 @@ contains
     if(do_budgets) then 
        call restartvar(ncid=ncid, flag=flag, varname='ENDWB', xtype=ncd_double,  &
          dim1name='column', &
-         long_name='water balance at end of timestep', units='kg/m2', &
+         long_name='water balance at end of timestep using consistent water balance', units='kg/m2', &
          interpinic_flag='interp', readvar=readvar, data=this%endwb)
+
+       call restartvar(ncid=ncid, flag=flag, varname='ENDWBINT', xtype=ncd_double,  &
+         dim1name='column', &
+         long_name='water balance at end of timestep - using old method', units='kg/m2', &
+         interpinic_flag='interp', readvar=readvar, data=this%endwb_int)
     end if 
 
     call restartvar(ncid=ncid, flag=flag, varname='H2OSOI_LIQ', xtype=ncd_double,  &
