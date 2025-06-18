@@ -421,17 +421,17 @@ contains
           end if
 
           ! equality test between errh2o and errh2o_old. If old mass balance is actually correct they should be equal.
-          if (abs(errh2o(c) - errh2o_old(c)) .ge. 1e-10_r8) then
+          !if (abs(errh2o(c) - errh2o_old(c)) .ge. 1e-10_r8) then
             write(iulog,*)'WARNING:  water balance error ',&
                ' nstep= ',nstep, &
-               ' local indexc= ',indexc,&
-               ' errh2o= ',errh2o(indexc)    
-             write(iulog,*)'endwb                      = ',endwb(indexc)
-             write(iulog,*)'begwb                      = ',begwb(indexc)
-             write(iulog,*)'endwb_int                  = ',endwb_int(indexc)
-             write(iulog,*)'errh2o                     = ',errh2o(indexc)
-             write(iulog,*)'errh2o_old                 = ',errh2o_old(indexc)
-          endif  
+               ' local c= ',c,&
+               ' errh2o= ',errh2o(c)    
+             write(iulog,*)'endwb                      = ',endwb(c)
+             write(iulog,*)'begwb                      = ',begwb(c)
+             write(iulog,*)'endwb_int                  = ',endwb_int(c)
+             write(iulog,*)'errh2o                     = ',errh2o(c)
+             write(iulog,*)'errh2o_old                 = ',errh2o_old(c)
+          !endif  
 
 
        end do
