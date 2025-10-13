@@ -478,6 +478,7 @@ sub write_filepath_cesmbld
 		     "external_models/fates/fire",
 		     "external_models/fates/parteh",
 		     "external_models/fates/radiation",
+		     "external_models/ats",
 		     "external_models/emi/src/",
 		     "external_models/emi/src/constants",
 		     "external_models/emi/src/em/base",

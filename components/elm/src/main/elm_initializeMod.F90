@@ -1109,9 +1109,23 @@ contains
     ! !DESCRIPTION:
     ! CLM initialization - third phase
     !
+    ! !USES:
+    use elm_varctl               , only : use_ats
+
+#ifdef USE_ATS_LIB
+    use ExternalModelATS        , only : EM_ATS_Create, em_ats
+#endif    
+    
     implicit none
 
     call t_startf('elm_init3')
+
+#ifdef USE_ATS_LIB
+    if (use_ats) then
+       call EM_ATS_Create(em_ats)
+       call em_ats%Init()
+    endif
+#endif
 
     call t_stopf('elm_init3')
   end subroutine initialize3

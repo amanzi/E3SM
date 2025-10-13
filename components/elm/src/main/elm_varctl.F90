@@ -414,6 +414,11 @@ module elm_varctl
   logical, public :: use_arctic_init     = .false.
 
   !----------------------------------------------------------
+  ! ATS external model
+  !----------------------------------------------------------
+  logical, public :: use_ats        = .false.
+
+  !----------------------------------------------------------
   ! Stub EM switches
   !----------------------------------------------------------
   logical          , public :: use_em_stub = .false.

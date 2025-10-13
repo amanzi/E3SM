@@ -29,7 +29,12 @@ contains
     use MOABGridType, only : elm_moab_finalize
 #endif
     ! !USES:
-    use elm_varctl             , only : use_cn
+    use elm_varctl             , only : use_cn, use_ats
+
+#ifdef USE_ATS_LIB
+    use ExternalModelATS       , only : em_ats
+#endif
+
     !
     ! !ARGUMENTS
     implicit none
@@ -43,6 +48,12 @@ contains
        call cleanupLitterTransportList()
     endif
 
+#ifdef USE_ATS_LIB
+    if (use_ats) then
+       call em_ats%Finalize()
+    endif
+#endif
+    
   end subroutine final
 
 end module elm_finalizeMod
