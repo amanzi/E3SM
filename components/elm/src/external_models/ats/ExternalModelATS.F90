@@ -603,8 +603,8 @@ contains
     end do
 
     ! check lat lon
-    if (ats_lons(0) >= 0.) then
-       do j=1,this%ncolumns
+    if (ats_lons(1) >= 0.) then
+       do i=1,this%ncolumns
           if (abs(ats_lats(i) - 0.) > 1.e-8 .or. abs(ats_lons(i) - 0.) > 1.e-8) then
              call endrun("WARNING: ATS column lat/lon does not match ELM grid cell lat/lon -- perhaps incorrect ordering.")
           end if

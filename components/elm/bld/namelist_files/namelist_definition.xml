@@ -2051,7 +2051,7 @@ If TRUE setup up lateral grid connectivity in CLM.
 </entry>
 
 <entry id="domain_decomp_type" type="char*256" category="elm_initialization"
-       group="elm_inparm" valid_values="round_robin,graph_partitioning,simple,moab" >
+       group="elm_inparm" valid_values="round_robin,graph_partitioning,simple,moab,ats" >
 Specifies the method for decomposing CLM grids across processors.
 </entry>
 

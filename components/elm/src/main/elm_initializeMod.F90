@@ -75,12 +75,19 @@ contains
     use landunit_varcon           , only: landunit_varcon_init, max_lunit, istice_mec, max_polygon, max_non_poly_lunit
     use column_varcon             , only: col_itype_to_icemec_class
     use elm_varctl                , only: fsurdat, fatmlndfrc, flndtopo, fglcmask, noland, version
+    use elm_varctl               , only : use_ats, use_ats_ic
     use pftvarcon                 , only: pftconrd
     use soilorder_varcon          , only: soilorder_conrd
     use decompInitMod             , only: decompInit_lnd, decompInit_clumps, decompInit_gtlcp
 #ifdef MOAB_LATERAL
     use decompInitMod             , only: decompInit_moab
 #endif
+#ifdef USE_ATS_LIB
+    use decompInitMod             , only : decompInit_ats
+    use ExternalModelATS          , only : em_ats, EM_ATS_Create
+#endif    
+
+
     use domainMod                 , only: domain_check, ldomain, domain_init
     use surfrdMod                 , only: surfrd_get_globmask, surfrd_get_grid, surfrd_get_topo, surfrd_get_data, surfrd_get_topo_for_solar_rad, surfrd_finetop_data
     use controlMod                , only: control_init, control_print, NLFilename
@@ -182,6 +189,14 @@ contains
        return
     end if
 
+    ! ------------------------------------------------------------------------
+    ! Create the ATS instance now so it can read mesh and provide proc info
+    ! ------------------------------------------------------------------------
+#ifdef USE_ATS_LIB
+    if (use_ats .or. use_ats_ic) then
+       call EM_ATS_Create(em_ats)
+    endif
+#endif
 
     ! ------------------------------------------------------------------------
     ! If specified, read the grid level connectivity
@@ -214,6 +229,11 @@ contains
 #ifdef MOAB_LATERAL
     case ("moab")
       call decompInit_moab(ni, nj, amask)
+      deallocate(amask)
+#endif
+#ifdef USE_ATS_LIB
+    case ("ats")
+      call decompInit_ats(ni, nj, amask)
       deallocate(amask)
 #endif
     case ("round_robin")
