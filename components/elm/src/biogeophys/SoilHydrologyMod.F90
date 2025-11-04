@@ -894,6 +894,7 @@ contains
        end do
 
        !============================== QCHARGE =========================================
+       if (.not. use_ats) then
        ! Water table changes due to qcharge
        do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
@@ -1040,7 +1041,9 @@ contains
              endif !k_frz > k_perch
           endif
        end do
+       endif ! use_ats
 
+       
        do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
 
@@ -1258,6 +1261,9 @@ contains
           qflx_qrgwl(c)    = 0._r8
        end do
 
+
+       if (.not. use_ats) then
+       
        ! The layer index of the first unsaturated layer, i.e., the layer right above
        ! the water table
 
@@ -1776,6 +1782,8 @@ contains
           end if
        end do
 
+       end if
+       
      end associate
 
    end subroutine Drainage
