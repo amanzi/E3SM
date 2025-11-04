@@ -29,7 +29,7 @@ contains
     use MOABGridType, only : elm_moab_finalize
 #endif
     ! !USES:
-    use elm_varctl             , only : use_cn, use_ats
+    use elm_varctl             , only : use_cn, use_ats, use_ats_ic
 
 #ifdef USE_ATS_LIB
     use ExternalModelATS       , only : em_ats
@@ -49,7 +49,7 @@ contains
     endif
 
 #ifdef USE_ATS_LIB
-    if (use_ats) then
+    if (use_ats .or. use_ats_ic) then
        call em_ats%Finalize()
     endif
 #endif

@@ -1121,10 +1121,10 @@ contains
     call t_startf('elm_init3')
 
 #ifdef USE_ATS_LIB
-    if (use_ats) then
+    if (use_ats .or. use_ats_ic) then
        call EM_ATS_Create(em_ats)
        call em_ats%Init(0.0_r8, filter, get_proc_clumps(), bounds_proc%endc - bounds_proc%begc, nlevgrnd, &
-            grc_pp, col_pp, soilstate_vars, col_ws)
+            grc_pp, col_pp, soilstate_vars, soilhydrology_vars, col_ws)
     endif
 #endif
 
