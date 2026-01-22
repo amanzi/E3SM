@@ -1295,8 +1295,8 @@ contains
           qflx_qrgwl(c)    = 0._r8
        end do
 
-       ! ats does its own baseflow, perched water table, etc
-       if (.not. use_ats) then
+      ! ats does its own baseflow, perched water table, etc
+      if (.not. use_ats) then
        
        ! The layer index of the first unsaturated layer, i.e., the layer right above
        ! the water table
@@ -1788,6 +1788,8 @@ contains
 
        end do
 
+      end if ! .not. use_ats @L1306-1307
+
        ! No drainage for urban columns (except for pervious road as computed above)
 
        do fc = 1, num_urbanc
@@ -1804,7 +1806,7 @@ contains
        ! assigning qflx_drain, which we definitely want to be zero for
        ! ATS)?  If qflx_snwcp_liq is nonzero, it is never assigned to
        ! qflx_qrgwl which may go into mass balance?
-       end if ! use_ats
+       !end if ! use_ats
        
      end associate
 
