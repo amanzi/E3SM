@@ -1227,7 +1227,6 @@ contains
 
 
        ! Convert layer thicknesses from m to mm
-
         do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
           nlevbed = nlev2bed(c)
@@ -1240,10 +1239,11 @@ contains
        end do
 
        ! Initial set
-
        do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
-          qflx_drain(c)    = 0._r8
+          if (.not. use_ats) then
+             qflx_drain(c)    = 0._r8
+          end if
           rsub_bot(c)      = 0._r8
           qflx_rsub_sat(c) = 0._r8
           rsub_top(c)      = 0._r8
@@ -1251,12 +1251,11 @@ contains
           qflx_qrgwl(c)    = 0._r8
        end do
 
-
+       ! ats does its own baseflow, perched water table, etc
        if (.not. use_ats) then
        
        ! The layer index of the first unsaturated layer, i.e., the layer right above
        ! the water table
-
        do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
           nlevbed = nlev2bed(c)
@@ -1739,7 +1738,11 @@ contains
           end if
        end do
 
-       end if
+       ! ETC: use_ats may miss qflx_snwcp_liq (see above do loop
+       ! assigning qflx_drain, which we definitely want to be zero for
+       ! ATS)?  If qflx_snwcp_liq is nonzero, it is never assigned to
+       ! qflx_qrgwl which may go into mass balance?
+       end if ! use_ats
        
      end associate
 

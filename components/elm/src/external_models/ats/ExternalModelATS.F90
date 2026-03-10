@@ -62,7 +62,7 @@ contains
     type(em_ats_type) :: this
 
     this = EM_ATS_Create2(ats_inputdir, ats_inputfile, mpicom)
-    this%verbosity = 1
+    this%verbosity = 2
   end subroutine EM_ATS_Create
 
   !------------------------------------------------------------------------
@@ -106,8 +106,17 @@ contains
     c_log_file(1) = C_NULL_CHAR
 
     EM_ATS_Create2%ats = ats_create(mpi_comm, c_input_file, c_log_file)
+    call ats_parse_parameter_list(EM_ATS_Create2%ats)
   end function EM_ATS_Create2
-    
+
+  !------------------------------------------------------------------------
+  subroutine EM_ATS_GetMeshInfo(this, ncolumns)
+    implicit none
+    integer, intent(out) :: ncolumns
+    call ats_get_mesh_info(this%ats, ncolumns)
+  end subroutine EM_ATS_GetMeshInfo
+
+
   !------------------------------------------------------------------------
   subroutine EM_ATS_Init(this, time0, filter, nclumps, ncolumns, nlevgrnd, &
        grc_pp, col_pp, soilstate_vars, soilhydrology_vars, col_ws)
@@ -140,8 +149,6 @@ contains
     this%col_filter => filter(1)%hydrologyc
     this%pft_filter => filter(1)%soilp
     this%nlevgrnd = nlevgrnd
-
-    call ats_parse_parameter_list(this%ats)
 
     ! check ATS -- ELM mesh consistency
     ! TODO: ETC -- Step 0
@@ -270,6 +277,7 @@ contains
     end if
 
     ! -- call the advance method
+    write(iulog,*) "CALLING ats_advance"
     call ats_advance(this%ats, dt, do_checkpoint, do_vis)
 
     ! pass state back to ELM
@@ -454,7 +462,7 @@ contains
        ii = this%col_filter(i)
        ats_field(i) = factor * field(ii)
        if (this%verbosity >= lverbosity) then
-          write(iulog,*) "SET: ", var_name, " : column ", i, " = ", ats_field(i)
+          write(iulog,*) "SET: ", var_name, " : column ", i, " = ", field(ii)
        end if
     end do
   end subroutine EM_ATS_SetField_ScalarMultiply
@@ -561,9 +569,11 @@ contains
 
     real(c_double) :: ats_dzs(this%nlevgrnd)
     real(c_double) :: ats_areas(this%ncolumns)
+    real(c_double) :: ats_lats(this%ncolumns)
+    real(c_double) :: ats_lons(this%ncolumns)
 
     ! compare to mesh info
-    call ats_get_mesh_info(this%ats, ats_ncols_local, ats_ncols_global, ats_nlevgrnd, ats_dzs, ats_areas)
+    call ats_get_mesh_info2(this%ats, ats_ncols_local, ats_ncols_global, ats_nlevgrnd, ats_dzs, ats_areas, ats_lats, ats_lons)
 
     ! assertions on shapes
     if (ats_ncols_local /= this%ncolumns) then
@@ -590,6 +600,15 @@ contains
           ! call endrun("ATS column areas do not match ELM grid cell areas -- perhaps incorrect ordering.")
        end if
     end do
+
+    ! check lat lon
+    if (ats_lons(0) >= 0.) then
+       do j=1,this%ncolumns
+          if (abs(ats_lats(i) - 0.) > 1.e-8 .or. abs(ats_lons(i) - 0.) > 1.e-8) then
+             call endrun("WARNING: ATS column lat/lon does not match ELM grid cell lat/lon -- perhaps incorrect ordering.")
+          end if
+       end do
+    end if
     
     ! calls ats_get_mesh_info, compares nlevgrnd, compares ncolumns,
     ! compares areas, elevations? lat-lon?
@@ -870,7 +889,13 @@ contains
        evap = ats_evap(i) * 1.e3_r8
        pot_evap = ats_pot_evap(i) * 1.e3_r8
        diff = pot_evap - evap
-       
+       downreg = 1.0
+
+       if (this%verbosity >= 1) then
+          write(iulog,*) "     pot evaporation : column ", i, " = ", pot_evap
+          write(iulog,*) "     qflx_evap_tot : column ", i, " = ", col_wf%qflx_evap_tot
+       end if
+
        if (pot_evap > 0. .and. diff > 0.) then
           downreg = evap / pot_evap
 
@@ -884,8 +909,15 @@ contains
           !
           ! take it all from soil evap
           ! note these are all per unit column area
-          col_wf%qflx_evap_soi = col_wf%qflx_evap_soi - diff
-          col_wf%qflx_evap_tot = col_wf%qflx_evap_tot - diff
+          col_wf%qflx_evap_soi(ii) = col_wf%qflx_evap_soi(ii) - diff
+          col_wf%qflx_evap_tot(ii) = col_wf%qflx_evap_tot(ii) - diff
+       end if
+
+       if (this%verbosity >= 1) then
+          write(iulog,*) "     pot evaporation : column ", i, " = ", pot_evap
+          write(iulog,*) "     E downreg : column ", i, " total = ", downreg
+          write(iulog,*) "     E difference : column ", i, " = ", diff
+          write(iulog,*) "GET: actual evaporation : column ", i, " = ", evap
        end if
     end do
   end subroutine EM_ATS_GetField_ActualEvaporation

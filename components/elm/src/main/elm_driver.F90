@@ -173,12 +173,6 @@ module elm_driver
   use elm_interface_funcsMod      , only : update_bgc_data_pf2elm, update_th_data_pf2elm
   use elm_interface_pflotranMod   , only : elm_pf_run, elm_pf_write_restart
   use elm_interface_pflotranMod   , only : elm_pf_finalize
-  !----------------------------------------------------------------------------
-  ! ats
-#ifdef USE_ATS_LIB
-  use elm_varctl                  , only : use_ats
-  use ExternalModelATS            , only : em_ats
-#endif
   
   use WaterBudgetMod              , only : WaterBudget_Reset, WaterBudget_Run, WaterBudget_Accum, WaterBudget_Print
   use WaterBudgetMod              , only : WaterBudget_SetBeginningMonthlyStates
