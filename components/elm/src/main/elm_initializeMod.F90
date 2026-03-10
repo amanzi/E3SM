@@ -81,6 +81,9 @@ contains
 #ifdef HAVE_MOAB
     use decompInitMod             , only: decompInit_moab
 #endif
+#ifdef USE_ATS
+    use decompInitMod             , only : decompInit_ats
+#endif
     use domainMod                 , only: domain_check, ldomain, domain_init
     use surfrdMod                 , only: surfrd_get_globmask, surfrd_get_grid, surfrd_get_topo, surfrd_get_data,surfrd_get_topo_for_solar_rad
     use controlMod                , only: control_init, control_print, NLFilename
@@ -182,6 +185,14 @@ contains
        return
     end if
 
+    ! ------------------------------------------------------------------------
+    ! Create the ATS instance now so it can read mesh and provide proc info
+    ! ------------------------------------------------------------------------
+#ifdef USE_ATS_LIB
+    if (use_ats .or. use_ats_ic) then
+       call EM_ATS_Create(em_ats)
+    endif
+#endif
 
     ! ------------------------------------------------------------------------
     ! If specified, read the grid level connectivity
@@ -214,6 +225,11 @@ contains
 #ifdef HAVE_MOAB
     case ("moab")
       call decompInit_moab(ni, nj, amask)
+      deallocate(amask)
+#endif
+#ifdef USE_ATS
+    case ("ats")
+      call decompInit_ats(ni, nj, amask)
       deallocate(amask)
 #endif
     case ("round_robin")
@@ -1222,7 +1238,6 @@ contains
 
 #ifdef USE_ATS_LIB
     if (use_ats .or. use_ats_ic) then
-       call EM_ATS_Create(em_ats)
        call em_ats%Init(0.0_r8, filter, get_proc_clumps(), bounds_proc%endc - bounds_proc%begc, nlevgrnd, &
             grc_pp, col_pp, soilstate_vars, soilhydrology_vars, col_ws)
     endif

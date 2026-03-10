@@ -602,6 +602,11 @@ contains
              call endrun(msg=' ERROR: use_pflotran/pf_hmode and use_ats cannot both be set to true.'//&
                    errMsg(__FILE__, __LINE__))
           end if
+
+          ! force the use of ATS partitioning
+          if (use_ats .or. use_ats_ic) then
+             domain_decomp_type = 'ats'
+          endif
        end if
        
     endif   ! end of if-masterproc if-block

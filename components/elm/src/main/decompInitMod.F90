@@ -31,6 +31,9 @@ module decompInitMod
 #ifdef HAVE_MOAB
   public decompInit_moab         ! initializes lnd grid decomposition using MOAB partitioners
 #endif
+#ifdef USE_ATS
+  public decompInit_ats          ! initializes lnd grid decomposition using ATS mesh info
+#endif
   public decompInit_lnd          ! initializes lnd grid decomposition into clumps and processors
   public decompInit_clumps       ! initializes atm grid decomposition into clumps
   public decompInit_gtlcp        ! initializes g,l,c,p decomp info
@@ -322,6 +325,134 @@ contains
   end subroutine decompInit_moab
 #endif
 
+
+#ifdef USE_ATS
+  subroutine decompInit_ats(lni,lnj,amask)
+    !
+    ! !DESCRIPTION:
+    ! This subroutine initializes the land surface decomposition into a clump
+    ! data structure.  This assumes each pe has the same number of clumps
+    ! set by clump_pproc
+    !
+    ! !USES:
+    use ExternalModelATS, only em_ats, EM_ATS_GetGridInfo
+    !
+    ! !ARGUMENTS:
+    implicit none
+
+#include "mpif.h"
+    integer , intent(in) :: amask(:)
+    integer , intent(in) :: lni,lnj   ! domain global size
+    !
+    ! ! !LOCAL VARIABLES:
+    integer              :: nclumps              ! global number of clumps
+    integer              :: cid,pid              ! indices
+    integer              :: ier                  ! error code
+    integer, allocatable :: lcount(:), gcount(:)
+    integer              :: lns                  ! global domain size 
+
+
+    ! !------------------------------------------------------------------------------
+    !--- set and verify nclumps ---
+    if (clump_pproc == 1) then
+       nclumps = npes
+    else
+       write(iulog,*)'ATS only accepts clump_pproc=1, ', clump_pproc, '  provided'
+       call endrun(msg=errMsg(__FILE__, __LINE__))
+    end if
+
+    ! allocate and initialize procinfo (from decompMod.F90) and clumps
+    ! beg and end indices initialized for simple addition of cells later
+    allocate(procinfo%cid(clump_pproc), stat=ier)
+    if (ier /= 0) then
+       write(iulog,*) 'decompInit_moab(): allocation error for procinfo%cid'
+       call endrun(msg=errMsg(__FILE__, __LINE__))
+    endif
+    procinfo%nclumps   = clump_pproc
+    procinfo%cid(:)    = -1
+    procinfo%ncells    = moab_gcell%num_owned ! owned elements in the current task
+    procinfo%ntunits   = 0
+    procinfo%nlunits   = 0
+    procinfo%ncols     = 0
+    procinfo%npfts     = 0
+    procinfo%nCohorts  = 0
+    procinfo%begg      = 1
+    procinfo%begt      = 1
+    procinfo%begl      = 1
+    procinfo%begc      = 1
+    procinfo%begp      = 1
+    procinfo%begCohort = 1
+    procinfo%endg      = 0
+    procinfo%endt      = 0
+    procinfo%endl      = 0
+    procinfo%endc      = 0
+    procinfo%endp      = 0
+    procinfo%endCohort = 0
+
+    allocate(clumps(nclumps), stat=ier)
+    if (ier /= 0) then
+       write(iulog,*) 'decompInit_moab(): allocation error for clumps'
+       call endrun(msg=errMsg(__FILE__, __LINE__))
+    end if
+    clumps(:)%owner     = -1
+    clumps(:)%ncells    = 0
+    clumps(:)%ntunits   = 0
+    clumps(:)%nlunits   = 0
+    clumps(:)%ncols     = 0
+    clumps(:)%npfts     = 0
+    clumps(:)%nCohorts  = 0
+    clumps(:)%begg      = 1
+    clumps(:)%begt      = 1
+    clumps(:)%begl      = 1
+    clumps(:)%begc      = 1
+    clumps(:)%begp      = 1
+    clumps(:)%begCohort = 1
+    clumps(:)%endg      = 0
+    clumps(:)%endt      = 0
+    clumps(:)%endl      = 0
+    clumps(:)%endc      = 0
+    clumps(:)%endp      = 0
+    clumps(:)%endCohort = 0
+
+    ! accumulate to find begg and endg
+    allocate(lcount(1))
+    allocate(gcount(npes))
+    call MPI_Alltoall(lcount, 1, MPI_INTEGER, &
+         gcount, 1, MPI_INTEGER, mpicom, ier)
+    if (ier /= 0) then
+       write(iulog,*) 'decompInit_ats(): Alltoall failed'
+       call endrun(msg=errMsg(__FILE__, __LINE__))
+    end if
+
+    begg = 0
+    do pid = 0,npes-1
+       cid = pid + 1
+       clumps(cid)%begg = begg + 1
+       clumps(cid)%endg = begg + gcount(cid)
+       clumps(cid)%ncells = gcount(cid)
+       clumps(cid)%owner = pid
+       begg = clumps(cid)%endg
+
+       if (pid == iam) then
+          procinfo%begg = clumps(cid)%begg
+          procinfo%endg = clumps(cid)%endg
+          procinfo%cid(1) = cid
+       end if
+    end do
+
+    lns = lni * lnj
+    if (lns /= begg) then
+       write(iulog,*) 'decompInit_ats(): ELM num grid cells = ', lns, ' but ATS has ', begg
+       call endrun(msg=errMsg(__FILE__, __LINE__))
+    endif
+    
+    deallocate(lcount)
+    deallocate(gcount)
+
+  end subroutine decompInit_ats
+#endif
+
+  
   !------------------------------------------------------------------------------
   subroutine decompInit_lnd(lni,lnj,amask)
     !
