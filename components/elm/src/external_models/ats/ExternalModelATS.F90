@@ -62,7 +62,7 @@ contains
     type(em_ats_type) :: this
 
     this = EM_ATS_Create2(ats_inputdir, ats_inputfile, mpicom)
-    this%verbosity = 2
+    this%verbosity = 1
   end subroutine EM_ATS_Create
 
   !------------------------------------------------------------------------
@@ -112,6 +112,7 @@ contains
   !------------------------------------------------------------------------
   subroutine EM_ATS_GetMeshInfo(this, ncolumns)
     implicit none
+    class(em_ats_type) :: this
     integer, intent(out) :: ncolumns
     call ats_get_mesh_info(this%ats, ncolumns)
   end subroutine EM_ATS_GetMeshInfo
