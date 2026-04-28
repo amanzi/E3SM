@@ -637,8 +637,8 @@ contains
        ! checking if conflict when using ATS external model
        if (use_ats .or. use_ats_ic) then
 
-          if (use_pflotran .and. pf_hmode) then
-             call endrun(msg=' ERROR: use_pflotran/pf_hmode and use_ats cannot both be set to true.'//&
+          if (use_pflotran) then
+             call endrun(msg=' ERROR: use_pflotran and use_ats cannot both be set to true.'//&
                    errMsg(__FILE__, __LINE__))
           end if
 
