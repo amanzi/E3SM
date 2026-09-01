@@ -2147,16 +2147,26 @@ contains
        end do
     end do
 
-    ! column-level carbon losses to fire, including pft losses
+    ! column-level carbon losses to fire, including pft losses.
+    ! The pool reduction over the column-first m_decomp_cpools_to_fire_col(c,l)
+    ! array is done pool-outer / column-filter-inner for cache locality. The
+    ! per-column accumulation order (l increasing) is preserved, so results are
+    ! bit-for-bit identical.
     do fc = 1,num_soilc
        c = filter_soilc(fc)
-
-       this%fire_closs_col(c) = this%fire_closs_p2c_col(c) 
-       do l = 1, ndecomp_pools
+       this%fire_closs_col(c) = this%fire_closs_p2c_col(c)
+    end do
+    do l = 1, ndecomp_pools
+       do fc = 1,num_soilc
+          c = filter_soilc(fc)
           this%fire_closs_col(c) = &
                this%fire_closs_col(c) + &
                this%m_decomp_cpools_to_fire_col(c,l)
        end do
+    end do
+
+    do fc = 1,num_soilc
+       c = filter_soilc(fc)
 
        ! column-level carbon losses due to landcover change
        this%dwt_closs_col(c) = &

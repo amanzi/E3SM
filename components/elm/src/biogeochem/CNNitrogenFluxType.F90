@@ -1220,14 +1220,20 @@ subroutine NSummary_interface(this,bounds,num_soilc, filter_soilc)
        do fc = 1,num_soilc
          c = filter_soilc(fc)
          this%externaln_to_decomp_delta_col(c) = 0._r8
-         do j = 1, nlevdecomp_full
-            do l = 1, ndecomp_pools
-               this%externaln_to_decomp_delta_col(c) =    &
-                  this%externaln_to_decomp_delta_col(c) + &
-                    this%externaln_to_decomp_npools_col(c,j,l)*dzsoi_decomp(j)
-            end do
-
-         end do
+       end do
+       ! Level-outer / pool-middle / column-filter-inner reduction over the
+       ! column-first externaln_to_decomp_npools_col(c,j,l) array. The per-column
+       ! accumulation order (j outer, l inner) is unchanged, so the reduction is
+       ! bit-for-bit identical.
+       do j = 1, nlevdecomp_full
+          do l = 1, ndecomp_pools
+             do fc = 1,num_soilc
+                c = filter_soilc(fc)
+                this%externaln_to_decomp_delta_col(c) =    &
+                   this%externaln_to_decomp_delta_col(c) + &
+                     this%externaln_to_decomp_npools_col(c,j,l)*dzsoi_decomp(j)
+             end do
+          end do
        end do
 
        ! do the initialization for the following variable here.
@@ -1237,41 +1243,56 @@ subroutine NSummary_interface(this,bounds,num_soilc, filter_soilc)
             this%externaln_to_decomp_npools_col(c, 1:nlevdecomp_full, 1:ndecomp_pools) = 0._r8
        end do
 
-       ! add up all vertically-resolved addition/removal rates (gC/m3/s) of decomp_pools
-       do fc = 1,num_soilc
-            c = filter_soilc(fc)
-            do j = 1, nlevdecomp_full
-                do l = 1, ndecomp_pools
-                ! for litter C pools
-                if (l==i_met_lit) then
+       ! add up all vertically-resolved addition/removal rates (gC/m3/s) of decomp_pools.
+       ! Restructured to level-outer / pool-middle / column-filter-inner so the
+       ! column-first arrays are swept with the contiguous column index innermost,
+       ! and the pool-type branch (which depends only on the pool index l) is lifted
+       ! out of the column loop instead of being re-evaluated per column. The
+       ! per-column reduction into externaln_to_decomp_delta_col keeps its original
+       ! order (j outer, l inner), so results are bit-for-bit identical.
+       do j = 1, nlevdecomp_full
+          do l = 1, ndecomp_pools
+             ! for litter C pools
+             if (l==i_met_lit) then
+                do fc = 1,num_soilc
+                   c = filter_soilc(fc)
                    this%externaln_to_decomp_npools_col(c,j,l) =              &
                        this%externaln_to_decomp_npools_col(c,j,l)            &
                         + this%phenology_n_to_litr_met_n_col(c,j)            &
                         + this%dwt_frootn_to_litr_met_n_col(c,j)             &
                         + this%gap_mortality_n_to_litr_met_n_col(c,j)        &
                         + this%harvest_n_to_litr_met_n_col(c,j)              &
-                        + this%m_n_to_litr_met_fire_col(c,j)                 
+                        + this%m_n_to_litr_met_fire_col(c,j)
+                end do
 
-                elseif (l==i_cel_lit) then
+             elseif (l==i_cel_lit) then
+                do fc = 1,num_soilc
+                   c = filter_soilc(fc)
                    this%externaln_to_decomp_npools_col(c,j,l) =              &
                        this%externaln_to_decomp_npools_col(c,j,l)            &
                         + this%phenology_n_to_litr_cel_n_col(c,j)            &
                         + this%dwt_frootn_to_litr_cel_n_col(c,j)             &
                         + this%gap_mortality_n_to_litr_cel_n_col(c,j)        &
                         + this%harvest_n_to_litr_cel_n_col(c,j)              &
-                        + this%m_n_to_litr_cel_fire_col(c,j)                  
+                        + this%m_n_to_litr_cel_fire_col(c,j)
+                end do
 
-                elseif (l==i_lig_lit) then
+             elseif (l==i_lig_lit) then
+                do fc = 1,num_soilc
+                   c = filter_soilc(fc)
                    this%externaln_to_decomp_npools_col(c,j,l) =              &
                        this%externaln_to_decomp_npools_col(c,j,l)            &
                         + this%phenology_n_to_litr_lig_n_col(c,j)            &
                         + this%dwt_frootn_to_litr_lig_n_col(c,j)             &
                         + this%gap_mortality_n_to_litr_lig_n_col(c,j)        &
                         + this%harvest_n_to_litr_lig_n_col(c,j)              &
-                        + this%m_n_to_litr_lig_fire_col(c,j)                 
+                        + this%m_n_to_litr_lig_fire_col(c,j)
+                end do
 
-                ! for cwd
-                elseif (l==i_cwd) then
+             ! for cwd
+             elseif (l==i_cwd) then
+                do fc = 1,num_soilc
+                   c = filter_soilc(fc)
                    this%externaln_to_decomp_npools_col(c,j,l) =              &
                        this%externaln_to_decomp_npools_col(c,j,l)            &
                         + this%dwt_livecrootn_to_cwdn_col(c,j)               &
@@ -1279,13 +1300,16 @@ subroutine NSummary_interface(this,bounds,num_soilc, filter_soilc)
                         + this%gap_mortality_n_to_cwdn_col(c,j)              &
                         + this%harvest_n_to_cwdn_col(c,j)                    &
                         + this%fire_mortality_n_to_cwdn_col(c,j)
+                end do
 
-                end if
+             end if
 
              ! the following is the net changes of plant N to decompible N poools between time-step
              ! in pflotran, decomposible N pools increments ARE from previous time-step (saved above);
              ! while, in CLM-CN all plant N pools are updated with current N fluxes among plant and ground/soil.
              ! therefore, when do balance check it is needed to adjust the time-lag of changes.
+             do fc = 1,num_soilc
+                c = filter_soilc(fc)
                 this%externaln_to_decomp_delta_col(c) =   &
                             this%externaln_to_decomp_delta_col(c) - &
                             this%externaln_to_decomp_npools_col(c,j,l)*dzsoi_decomp(j)
@@ -1293,10 +1317,10 @@ subroutine NSummary_interface(this,bounds,num_soilc, filter_soilc)
                 if (abs(this%externaln_to_decomp_npools_col(c,j,l))<=1.e-21_r8) then
                     this%externaln_to_decomp_npools_col(c,j,l) = 0._r8
                 end if
+             end do
 
-             end do !l = 1, ndecomp_pools
-          end do !j = 1, nlevdecomp_full
-       end do !fc = 1,num_soilc
+          end do !l = 1, ndecomp_pools
+       end do !j = 1, nlevdecomp_full
 
 
        ! if pflotran hydrology NOT coupled, need to do:
