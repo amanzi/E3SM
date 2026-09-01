@@ -72,6 +72,7 @@ contains
     integer  :: nlevbed                                    !# levels to bedrock
     real(r8) :: xs(bounds%begc:bounds%endc)                !excess soil water above urban ponding limit
     real(r8) :: vol_ice(bounds%begc:bounds%endc,1:nlevgrnd) !partial volume of ice lens in layer
+    real(r8) :: exp_neg3                                   !hoisted constant exp(-3._r8)
     real(r8) :: fff(bounds%begc:bounds%endc)               !decay factor (m-1)
     real(r8) :: s1                                         !variable to calculate qinmax
     real(r8) :: su                                         !variable to calculate qinmax
@@ -127,13 +128,18 @@ contains
          )
 
       ! Get time step
-      do fc = 1, num_hydrologyc
-         c = filter_hydrologyc(fc)
-         nlevbed = nlev2bed(c)
-         do j = 1,nlevbed
+      ! hoist constant exp(-3._r8) out of the inner loop (evaluated twice per iteration below)
+      exp_neg3 = exp(-3._r8)
 
-            ! Porosity of soil, partial volume of ice and liquid, fraction of ice in each layer,
-            ! fractional impermeability
+      ! Porosity of soil, partial volume of ice and liquid, fraction of ice in each layer,
+      ! fractional impermeability
+      ! Loop reordered level-outer / column-filter-inner (see SoilTemperatureMod) for
+      ! contiguous access of column-first arrays; per-(c,j) elementwise, bit-for-bit
+      do j = 1,nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            nlevbed = nlev2bed(c)
+            if (j > nlevbed) cycle
 
             vol_ice(c,j) = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
             if (origflag == 1) then
@@ -142,7 +148,7 @@ contains
                icefrac(c,j) = min(1._r8,vol_ice(c,j)/watsat(c,j))
             endif
 
-            fracice(c,j) = max(0._r8,exp(-3._r8*(1._r8-icefrac(c,j)))- exp(-3._r8))/(1.0_r8-exp(-3._r8))
+            fracice(c,j) = max(0._r8,exp(-3._r8*(1._r8-icefrac(c,j)))- exp_neg3)/(1.0_r8-exp_neg3)
          end do
       end do
 
@@ -432,10 +438,13 @@ contains
 
 
        ! Infiltration into surface soil layer (minus the evaporation)
-       do fc = 1, num_hydrologyc
-          c = filter_hydrologyc(fc)
-          nlevbed = nlev2bed(c)
-          do j = 1,nlevbed
+       ! Loop reordered level-outer / column-filter-inner (see SoilTemperatureMod) for
+       ! contiguous access of column-first arrays; per-(c,j) elementwise, bit-for-bit
+       do j = 1,nlevgrnd
+          do fc = 1, num_hydrologyc
+             c = filter_hydrologyc(fc)
+             nlevbed = nlev2bed(c)
+             if (j > nlevbed) cycle
              ! Porosity of soil, partial volume of ice and liquid
              vol_ice(c,j) = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
              eff_porosity(c,j) = max(0.01_r8,watsat(c,j)-vol_ice(c,j))
@@ -893,11 +902,13 @@ contains
 
 
        ! Convert layer thicknesses from m to mm
-
-       do fc = 1, num_hydrologyc
-          c = filter_hydrologyc(fc)
-          nlevbed = nlev2bed(c)
-          do j = 1,nlevbed
+       ! Loop reordered level-outer / column-filter-inner (see SoilTemperatureMod) for
+       ! contiguous access of column-first arrays; per-(c,j) elementwise, bit-for-bit
+       do j = 1,nlevgrnd
+          do fc = 1, num_hydrologyc
+             c = filter_hydrologyc(fc)
+             nlevbed = nlev2bed(c)
+             if (j > nlevbed) cycle
              dzmm(c,j) = dz(c,j)*1.e3_r8
           end do
        end do
@@ -1278,10 +1289,14 @@ contains
 
 
        ! Convert layer thicknesses from m to mm
-        do fc = 1, num_hydrologyc
-          c = filter_hydrologyc(fc)
-          nlevbed = nlev2bed(c)
-          do j = 1,nlevbed
+       ! Loop reordered level-outer / column-filter-inner (see SoilTemperatureMod) for
+       ! contiguous access of column-first arrays; per-(c,j) elementwise (vol_ice is a
+       ! per-iteration scalar), bit-for-bit
+       do j = 1,nlevgrnd
+          do fc = 1, num_hydrologyc
+             c = filter_hydrologyc(fc)
+             nlevbed = nlev2bed(c)
+             if (j > nlevbed) cycle
              dzmm(c,j) = dz(c,j)*1.e3_r8
 
              vol_ice = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
