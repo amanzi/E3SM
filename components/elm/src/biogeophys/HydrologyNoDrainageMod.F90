@@ -114,7 +114,6 @@ contains
     !
     ! !LOCAL VARIABLES:
     integer  :: g,l,c,j,fc                    ! indices
-    integer  :: nlevbed                       ! # layers to bedrock
     real(r8) :: psi,vwc,fsattmp,psifrz        ! temporary variables for soilpsi calculation
     real(r8) :: watdry                        ! temporary
     real(r8) :: rwat(bounds%begc:bounds%endc) ! soil water wgted by depth to maximum depth of 0.5 m
