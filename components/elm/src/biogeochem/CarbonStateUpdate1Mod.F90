@@ -211,9 +211,14 @@ contains
 
       ! column level fluxes
 
-      do fc = 1,num_soilc
-          c = filter_soilc(fc)
-          col_cs%decomp_som2c_vr(c,1:nlevdecomp) = col_cs%decomp_cpools_vr(c,1:nlevdecomp,6)
+      ! Level-outer / column-filter-inner copy of the column-first arrays
+      ! (replaces the strided (c,1:nlevdecomp) array-section copy). Pure
+      ! elementwise, so bit-for-bit identical.
+      do j = 1,nlevdecomp
+         do fc = 1,num_soilc
+            c = filter_soilc(fc)
+            col_cs%decomp_som2c_vr(c,j) = col_cs%decomp_cpools_vr(c,j,6)
+         end do
       end do
 
       if (.not. is_active_betr_bgc .and. .not.(use_pflotran .and. pf_cmode) ) then

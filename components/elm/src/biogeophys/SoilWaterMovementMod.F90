@@ -905,6 +905,7 @@ contains
      real(r8)             :: dzsum                         ! summation of dzmm of layers below water table (mm)
      integer              :: jwt                           ! index of first unsaturated soil layer
      real(r8)             :: flux_unit_conversion          ! [mm/s] ---> [kg/s]
+     real(r8)             :: flux_unit_conv_col(bounds%begc:bounds%endc) ! per-column [mm/s] ---> [kg/s]
      real(r8)             :: area                          ! [m^2]
      real(r8)             :: z_up, z_dn                    ! [m]
      real(r8)             :: qflx_drain_layer              ! Drainage flux from a soil layer (mm H2O/s)
@@ -977,10 +978,10 @@ contains
           ! [mm/s] --> [kg/s]   [m^2] [kg/m^3]  [m/mm]
           flux_unit_conversion     = area * denh2o * 1.0d-3
 
-          do j = 1, nlevsoi
-             ! ET sink
-             mflx_et_col(c,j) = -qflx_rootsoi_col(c,j)*flux_unit_conversion
-          end do
+          ! Stash the per-column conversion factor so the strided ET-sink
+          ! write of mflx_et_col(c,j) can be done in a cache-friendly
+          ! level-outer / column-filter-inner nest below (BFB, elementwise).
+          flux_unit_conv_col(c)    = flux_unit_conversion
 
           ! Infiltration source term
           mflx_infl_col(c) = qflx_infl(c)*flux_unit_conversion
@@ -1042,6 +1043,16 @@ contains
                                      mflx_neg_snow_col_1d(c-bounds%begc+1)*area
           mflx_snowlyr_col(c) = 0._r8
 
+       end do
+
+       ! ET sink: level-outer / column-filter-inner write of the column-first
+       ! mflx_et_col(c,j) array. Pure elementwise, so bit-for-bit identical to
+       ! the original column-outer / level-inner write.
+       do j = 1, nlevsoi
+          do fc = 1, num_hydrologyc
+             c = filter_hydrologyc(fc)
+             mflx_et_col(c,j) = -qflx_rootsoi_col(c,j)*flux_unit_conv_col(c)
+          end do
        end do
 
        ! compute the water deficit and reset negative liquid water content

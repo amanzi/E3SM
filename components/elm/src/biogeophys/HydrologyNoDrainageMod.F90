@@ -114,7 +114,6 @@ contains
     !
     ! !LOCAL VARIABLES:
     integer  :: g,l,c,j,fc                    ! indices
-    integer  :: nlevbed                       ! # layers to bedrock
     real(r8) :: psi,vwc,fsattmp,psifrz        ! temporary variables for soilpsi calculation
     real(r8) :: watdry                        ! temporary
     real(r8) :: rwat(bounds%begc:bounds%endc) ! soil water wgted by depth to maximum depth of 0.5 m
@@ -399,10 +398,15 @@ contains
             h2osoi_liqice_10cm(c) = 0._r8
          end if
       end do
-      do fc = 1, num_nolakec
-         c = filter_nolakec(fc)
-         nlevbed = nlev2bed(c)
-         do j = 1, nlevbed
+      ! Level-outer / column-filter-inner nest: ELM column arrays are
+      ! column-first, so iterating levels outermost is cache-friendly. The
+      ! per-column reduction order (j increasing) is preserved, so results
+      ! are bit-for-bit identical. The per-column bedrock extent nlev2bed(c)
+      ! is reproduced with the (j > nlev2bed(c)) mask.
+      do j = 1, nlevgrnd
+         do fc = 1, num_nolakec
+            c = filter_nolakec(fc)
+            if (j > nlev2bed(c)) cycle
             l = col_pp%landunit(c)
             if (.not. lun_pp%urbpoi(l)) then
                ! soil T at top 17 cm added by F. Li and S. Levis

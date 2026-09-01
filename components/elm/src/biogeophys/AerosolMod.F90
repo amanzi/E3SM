@@ -94,15 +94,22 @@ contains
 
       dtime = dtime_mod
 
+      ! Zero column-integrated aerosol mass before summation
       do fc = 1, num_on
          c = filter_on(fc)
-
-         ! Zero column-integrated aerosol mass before summation
          mss_bc_col(c)  = 0._r8
          mss_oc_col(c)  = 0._r8
          mss_dst_col(c) = 0._r8
+      enddo
 
-         do j = -nlevsno+1, 0
+      ! Level-outer / column-filter-inner nest over the snow layers. ELM column
+      ! arrays are column-first, so iterating levels outermost is cache-friendly.
+      ! The per-column reduction order (j increasing) is preserved, and this is a
+      ! pure loop reorder (no /snowmass reciprocal rewrite), so results are
+      ! bit-for-bit identical.
+      do j = -nlevsno+1, 0
+         do fc = 1, num_on
+            c = filter_on(fc)
 
             ! layer mass of snow:
             snowmass = h2osoi_ice(c,j) + h2osoi_liq(c,j)
@@ -176,8 +183,12 @@ contains
                mss_cnc_dst4(c,j)  = 0._r8
             endif
          enddo
+      enddo
 
-         ! top-layer diagnostics
+      ! top-layer diagnostics (done after the full snow-layer nest so that
+      ! mss_*tot(c,snl(c)+1) are complete)
+      do fc = 1, num_on
+         c = filter_on(fc)
          h2osno_top(c)  = h2osoi_ice(c,snl(c)+1) + h2osoi_liq(c,snl(c)+1) !TODO MV - is this correct to be placed here???
          mss_bc_top(c)  = mss_bctot(c,snl(c)+1)
          mss_oc_top(c)  = mss_octot(c,snl(c)+1)
