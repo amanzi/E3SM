@@ -345,6 +345,7 @@ contains
     real(r8) :: dsmpds                                       !temporary variable
     real(r8) :: dhkds                                        !temporary variable
     real(r8) :: hktmp                                        !temporary variable
+    real(r8) :: rdtime                                       ! reciprocal of dtime (1/s)
     !-----------------------------------------------------------------------
 
     associate(&
@@ -384,10 +385,12 @@ contains
       ! Because the depths in this routine are in mm, use local
       ! variable arrays instead of pointers
 
-      do fc = 1, num_hydrologyc
-        c = filter_hydrologyc(fc)
-        nlevbed = nlev2bed(c)
-        do j = 1, nlevbed
+      ! Loop nest inverted to level-outer / column-filter-inner so the
+      ! contiguous (column) index strides in the inner loop (bit-for-bit).
+      do j = 1, nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            if (j > nlev2bed(c)) cycle
             zmm(c,j) = z(c,j)*1.e3_r8
             dzmm(c,j) = dz(c,j)*1.e3_r8
             zimm(c,j) = zi(c,j)*1.e3_r8
@@ -451,10 +454,12 @@ contains
 
       ! calculate the equilibrium water content based on the water table depth
 
-      do fc = 1, num_hydrologyc
-         c = filter_hydrologyc(fc)
-         nlevbed = nlev2bed(c)
-         do j = 1, nlevbed
+      ! Loop nest inverted to level-outer / column-filter-inner (bit-for-bit;
+      ! neighbor zimm(c,j-1) read from arrays already fully populated above).
+      do j = 1, nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            if (j > nlev2bed(c)) cycle
             if ((zwtmm(c) <= zimm(c,j-1))) then
                vol_eq(c,j) = watsat(c,j)
 
@@ -501,10 +506,14 @@ contains
       ! Hydraulic conductivity and soil matric potential and their derivatives
 
       sdamp = 0._r8
-      do fc = 1, num_hydrologyc
-         c = filter_hydrologyc(fc)
-         nlevbed = nlev2bed(c)
-         do j = 1, nlevbed
+      rdtime = 1._r8/dtime   ! hoist loop-invariant reciprocal (bit-for-bit)
+
+      ! Loop nest inverted to level-outer / column-filter-inner (bit-for-bit;
+      ! neighbor reads use vwc_liq/watsat/etc. already fully populated above).
+      do j = 1, nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            if (j > nlev2bed(c)) cycle
             ! compute hydraulic conductivity based on liquid water content only
 
             if (origflag == 1) then
@@ -592,16 +601,18 @@ contains
          dqodw2(c,j) = -( hk(c,j)*dsmpdw(c,j+1) + num*dhkdw(c,j))/den
          rmx(c,j) =  qin(c,j) - qout(c,j) - qflx_rootsoi_col(c,j)
          amx(c,j) =  0._r8
-         bmx(c,j) =  dzmm(c,j)*(sdamp+1._r8/dtime) + dqodw1(c,j)
+         bmx(c,j) =  dzmm(c,j)*(sdamp+rdtime) + dqodw1(c,j)
          cmx(c,j) =  dqodw2(c,j)
       end do
 
       ! Nodes j=2 to j=nlevsoi-1
 
-      do fc = 1, num_hydrologyc
-         c = filter_hydrologyc(fc)
-         nlevbed = nlev2bed(c)
-         do j = 2, nlevbed - 1
+      ! Loop nest inverted to level-outer / column-filter-inner (bit-for-bit;
+      ! neighbor j-1/j+1 reads use arrays already fully populated above).
+      do j = 2, nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            if (j > nlev2bed(c) - 1) cycle
             den    = (zmm(c,j) - zmm(c,j-1))
             dzq    = (zq(c,j)-zq(c,j-1))
             num    = (smp(c,j)-smp(c,j-1)) - dzq
