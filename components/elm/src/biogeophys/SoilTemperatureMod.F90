@@ -216,8 +216,7 @@ contains
     logical  :: heat_on(bounds%begl:bounds%endl)                            ! is urban heating on?
     real(r8) :: fn_h2osfc(bounds%begc:bounds%endc)                          ! heat diffusion through standing-water/soil interface [W/m2]
     real(r8) :: dz_h2osfc(bounds%begc:bounds%endc)                          ! height of standing surface water [m]
-    real(r8) :: tvector_nourbanc(bounds%begc:bounds%endc,-nlevsno:nlevgrnd) ! initial temperature solution for non-urban columns [Kelvin]
-    real(r8) :: tvector_urbanc(bounds%begc:bounds%endc,-nlevsno:nlevgrnd)   ! initial temperature solution for urban columns [Kelvin]
+    real(r8) :: tvector(bounds%begc:bounds%endc,-nlevsno:nlevgrnd)          ! initial/numerical temperature solution [Kelvin]
     real(r8) :: tk_h2osfc(bounds%begc:bounds%endc)                          ! thermal conductivity of h2osfc [W/(m K)] [col]
     real(r8) :: dhsdT(bounds%begc:bounds%endc)                              ! temperature derivative of "hs" [col]
     real(r8) :: hs_soil(bounds%begc:bounds%endc)                            ! heat flux on soil [W/m2]
@@ -427,22 +426,28 @@ contains
       enddo
 
       ! initialize initial temperature vector
+      !
+      ! Only the ragged snow region (-nlevsno:0) can contain elements that are
+      ! not subsequently overwritten by the fill loop below: the soil region
+      ! (1:nlevgrnd) is fully written for every filter_nolakec column, and no
+      ! column outside filter_nolakec is ever read from tvector. Restricting the
+      ! spval init to the snow region therefore covers every element that may be
+      ! read (the copy-back reads only snl(c):nlevgrnd per column). A single
+      ! temporary serves both the non-urban and urban solves because their
+      ! filters are disjoint and SolveTemperature writes only its own filter's
+      ! rows.
 
-      tvector_nourbanc(begc:endc, :) = spval
-      tvector_urbanc(  begc:endc, :) = spval
+      tvector(begc:endc, -nlevsno:0) = spval
       do fc = 1,num_nolakec
          c = filter_nolakec(fc)
          do j = snl(c)+1, 0
-            tvector_nourbanc(c,j-1) = t_soisno(c,j)
-            tvector_urbanc(  c,j-1) = t_soisno(c,j)
+            tvector(c,j-1) = t_soisno(c,j)
          end do
          ! surface water layer has two coefficients
-         tvector_nourbanc(c,0) = t_h2osfc(c)
-         tvector_urbanc(  c,0) = t_h2osfc(c)
+         tvector(c,0) = t_h2osfc(c)
 
          ! soil layers; top layer will have one offset and one extra coefficient
-         tvector_nourbanc(c,1:nlevgrnd) = t_soisno(c,1:nlevgrnd)
-         tvector_urbanc(c,1:nlevgrnd)   = t_soisno(c,1:nlevgrnd)
+         tvector(c,1:nlevgrnd) = t_soisno(c,1:nlevgrnd)
       enddo
 
 
@@ -474,7 +479,7 @@ contains
               jtop( begc:endc ),                      &
               jbot( begc:endc ),                      &
               urban_column,                           &
-              tvector_nourbanc( begc:endc, -nlevsno: ))
+              tvector( begc:endc, -nlevsno: ))
 
       case (petsc_thermal_model)
 #ifdef USE_PETSC_LIB
@@ -528,7 +533,7 @@ contains
            jtop( begc:endc ),                      &
            jbot( begc:endc ),                      &
            urban_column,                           &
-           tvector_urbanc( begc:endc, -nlevsno: ))
+           tvector( begc:endc, -nlevsno: ))
 
       ! return temperatures to original array
 
@@ -538,28 +543,28 @@ contains
 
          if (lun_pp%urbpoi(l)) then
             do j = snl(c)+1, 0
-               t_soisno(c,j)       = tvector_urbanc(c,j-1)        !snow layers
+               t_soisno(c,j)       = tvector(c,j-1)        !snow layers
             end do
-            t_soisno(c,1:nlevgrnd) = tvector_urbanc(c,1:nlevgrnd) !soil layers
+            t_soisno(c,1:nlevgrnd) = tvector(c,1:nlevgrnd) !soil layers
 
             if (frac_h2osfc(c) == 0._r8) then
                t_h2osfc(c)         = t_soisno(c,1)
             else
-               t_h2osfc(c)         = tvector_urbanc(c,0)          !surface water
+               t_h2osfc(c)         = tvector(c,0)          !surface water
             endif
 
          else
 
             if (update_temperature) then
                do j = snl(c)+1, 0
-                  t_soisno(c,j)       = tvector_nourbanc(c,j-1)        !snow layers
+                  t_soisno(c,j)       = tvector(c,j-1)        !snow layers
                end do
-               t_soisno(c,1:nlevgrnd) = tvector_nourbanc(c,1:nlevgrnd) !soil layers
+               t_soisno(c,1:nlevgrnd) = tvector(c,1:nlevgrnd) !soil layers
 
                if (frac_h2osfc(c) == 0._r8) then
                   t_h2osfc(c)         = t_soisno(c,1)
                else
-                  t_h2osfc(c)         = tvector_nourbanc(c,0)          !surface water
+                  t_h2osfc(c)         = tvector(c,0)          !surface water
                endif
             endif
 
@@ -4822,11 +4827,15 @@ contains
          eflx_hs_h2osfc   => col_ef%eflx_hs_h2osfc     &
          )
 
-      do c = bounds%begc, bounds%endc
-         do j = -nlevsno+1, 1
+      ! level-outer / column-inner so the layered copy runs along the
+      ! contiguous column dimension (avoids the inverted (c,j) access order)
+      do j = -nlevsno+1, 1
+         do c = bounds%begc, bounds%endc
             eflx_sabg_lyr(c,j)  = sabg_lyr(c,j)
          enddo
+      enddo
 
+      do c = bounds%begc, bounds%endc
          eflx_dhsdT(c)       = dhsdT(c)
          eflx_hs_soil(c)     = hs_soil(c)
          eflx_hs_top_snow(c) = hs_top_snow(c)
