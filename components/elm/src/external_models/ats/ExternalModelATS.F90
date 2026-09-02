@@ -9,7 +9,7 @@ module ExternalModelATS
   ! ELM modules
   use iso_c_binding
   use shr_kind_mod                 , only : r8 => shr_kind_r8
-  use spmdMod                      , only : mpicom
+  use spmdMod                      , only : mpicom,iam
   use abortutils                   , only : endrun
   use histFileMod                  , only : hist_nhtfrq
   use elm_varpar                   , only : nlevgrnd
@@ -22,6 +22,7 @@ module ExternalModelATS
   use SoilHydrologyType          , only : soilhydrology_type
   use SoilStateType              , only : soilstate_type
   use ColumnDataType             , only : column_water_state, column_water_flux
+  use VegetationDataType         , only : vegetation_water_flux
   use ExternalModelATS_interface
 
   ! fortran API for C++ ATS code
@@ -173,7 +174,7 @@ contains
     !
     ! note we initially copy over total porosity, not effective
     ! porosity, because it is uninitialized at the first step.
-    call EM_ATS_SetField_CopySubsurface(this, "effective porosity", ats_var_id%EFFECTIVE_POROSITY, &
+    call EM_ATS_SetField_CopySubsurface(this, "base porosity", ats_var_id%BASE_POROSITY, &
          soilstate_vars%watsat_col)
     ! call ats_set_field(this%ats, ats_var_id%HYDRAULIC_CONDUCTIVITY, ...)
     ! call ats_set_field(this%ats, ats_var_id%CLAPP_HORN_B, ...)
@@ -188,8 +189,8 @@ contains
     ! ats init
     call ats_initialize(this%ats)
 
-    ! copy back initial water contents, using full porosity (not effective)
-    call EM_ATS_GetField_WaterContent(this, col_pp, soilstate_vars, col_ws, soilhydrology_vars, soilstate_vars%watsat_col)
+    ! copy back initial water contents
+    call EM_ATS_GetField_WaterContent(this, col_pp, soilstate_vars, col_ws, soilhydrology_vars)
 
     ! additionally re-save old water
     do i = 1, this%ncolumns
@@ -201,7 +202,7 @@ contains
 
 
   !------------------------------------------------------------------------
-  subroutine EM_ATS_Advance(this, dt, nstep, col_pp, soilstate_vars, col_ws, col_wf, soilhydrology_vars, photosyns_vars)
+  subroutine EM_ATS_Advance(this, dt, nstep, col_pp, soilstate_vars, col_ws, col_wf, veg_wf, soilhydrology_vars, photosyns_vars)
     implicit none
 
     class(em_ats_type)                       :: this
@@ -211,6 +212,7 @@ contains
     type(soilstate_type)     , intent(inout)    :: soilstate_vars
     type(column_water_state) , intent(inout)    :: col_ws
     type(column_water_flux)  , intent(inout)    :: col_wf
+    type(vegetation_water_flux), intent(inout)  :: veg_wf
     type(photosyns_type)     , intent(inout) :: photosyns_vars
     type(soilhydrology_type) , intent(inout) :: soilhydrology_vars
   
@@ -263,11 +265,11 @@ contains
 
     ! pass fluxes to ATS -- unit change from [mm H2O / s] to [m H2O / s]
     call EM_ATS_SetField_ScalarMultiply(this, "gross surface water source", ats_var_id%GROSS_SURFACE_WATER_SOURCE, &
-         col_wf%qflx_gross_infl_soil, 1.e-3_r8, 1)
+         col_wf%qflx_gross_infl_soil, 1.e-3_r8, 2)
     call EM_ATS_SetField_ScalarMultiply(this, "potential transpiration", ats_var_id%POTENTIAL_TRANSPIRATION, &
-         col_wf%qflx_tran_veg, 1.e-3_r8, 1)
+         col_wf%qflx_tran_veg, 1.e-3_r8, 2)
     call EM_ATS_SetField_ScalarMultiply(this, "potential evaporation", ats_var_id%POTENTIAL_EVAPORATION, &
-         col_wf%qflx_gross_evap_soil, 1.e-3_r8, 1)
+         col_wf%qflx_gross_evap_soil, 1.e-3_r8, 2)
     
     ! call advance
     ! -- get whether to vis and checkpoint
@@ -284,15 +286,15 @@ contains
     ! pass state back to ELM
     ! TODO: ETC -- Step 4
     ! note we use the same porosity as set above
-    call EM_ATS_GetField_WaterContent(this, col_pp, soilstate_vars, col_ws, soilhydrology_vars, soilstate_vars%eff_porosity_col)
+    call EM_ATS_GetField_WaterContent(this, col_pp, soilstate_vars, col_ws, soilhydrology_vars)
     
     ! get actual fluxes back and apply the downregulation where needed
-    call EM_ATS_GetField_ActualEvaporation(this, col_wf)
-    call EM_ATS_GetField_ActualTranspiration(this, col_wf, photosyns_vars)
+    call EM_ATS_GetField_ActualEvaporation(this, col_wf, veg_wf)
+    call EM_ATS_GetField_ActualTranspiration(this, col_wf, veg_wf, photosyns_vars)
 
     ! get runoff and baseflow back
-    call EM_ATS_GetField_ScalarMultiply(this, "baseflow", ats_var_id%BASEFLOW, col_wf%qflx_drain, 1.e3_r8, 1)
-    call EM_ATS_GetField_ScalarMultiply(this, "runoff", ats_var_id%RUNOFF, col_wf%qflx_surf, 1.e3_r8, 1)
+    call EM_ATS_GetField_ScalarMultiply(this, "baseflow", ats_var_id%BASEFLOW, col_wf%qflx_drain, 1.e3_r8, 2)
+    call EM_ATS_GetField_ScalarMultiply(this, "runoff", ats_var_id%RUNOFF, col_wf%qflx_surf, 1.e3_r8, 2)
     
     ! diagnostics?
     ! ...
@@ -333,9 +335,9 @@ contains
     call EM_ATS_GetFieldPtr(this, var_id, this%ncolumns, ats_field)
     do i=1,this%ncolumns
        ii = this%col_filter(i)
-       field(ii) = ats_field(i)
+       field(i) = ats_field(i)
        if (this%verbosity >= lverbosity) then
-          write(iulog,*) "GET: ", var_name, " : column ", i, " = ", field(ii)
+          write(iulog,*) "GET: ", var_name, " : column ", i, " = ", field(i)
        end if
     end do
   end subroutine EM_ATS_GetField_Copy
@@ -362,9 +364,9 @@ contains
     call EM_ATS_GetFieldPtrW(this, var_id, this%ncolumns, ats_field)
     do i=1,this%ncolumns
        ii = this%col_filter(i)
-       ats_field(i) = field(ii)
+       ats_field(i) = field(i)
        if (this%verbosity >= lverbosity) then
-          write(iulog,*) "SET: ", var_name, " : column ", i, " = ", field(ii)
+          write(iulog,*) "SET: ", var_name, " : column ", i, " = ", field(i)
        end if
     end do
   end subroutine EM_ATS_SetField_Copy
@@ -395,9 +397,9 @@ contains
     do i=1,this%ncolumns
        ii = this%col_filter(i)
        do j=1,this%nlevgrnd
-          field(ii, j) = ats_field((i-1) * this%nlevgrnd + j)
+          field(i, j) = ats_field((i-1) * this%nlevgrnd + j)
           if (this%verbosity >= lverbosity) then
-             write(iulog,*) "GET: ", var_name, " : column ", i, " cell ", j, " = ", field(ii,j)
+             write(iulog,*) "GET: ", var_name, " : column ", i, " cell ", j, " = ", field(i,j)
           end if
        end do
     end do
@@ -426,9 +428,9 @@ contains
     do i=1,this%ncolumns
        ii = this%col_filter(i)
        do j=1,this%nlevgrnd
-          ats_field((i-1) * this%nlevgrnd + j) = field(ii,j)
+          ats_field((i-1) * this%nlevgrnd + j) = field(i,j)
           if (this%verbosity >= lverbosity) then
-             write(iulog,*) "SET:", var_name, " : column ", i, " cell ", j, " = ", field(ii,j)
+             write(iulog,*) "SET:", var_name, " : column ", i, " cell ", j, " = ", field(i,j)
           end if
        end do
     end do
@@ -461,9 +463,9 @@ contains
     call EM_ATS_GetFieldPtrW(this, var_id, this%ncolumns, ats_field)
     do i=1,this%ncolumns
        ii = this%col_filter(i)
-       ats_field(i) = factor * field(ii)
+       ats_field(i) = factor * field(i)
        if (this%verbosity >= lverbosity) then
-          write(iulog,*) "SET: ", var_name, " : column ", i, " = ", field(ii)
+          write(iulog,*) "SET: ", var_name, " : column ", i, " = ", field(i)
        end if
     end do
   end subroutine EM_ATS_SetField_ScalarMultiply
@@ -491,9 +493,9 @@ contains
     call EM_ATS_GetFieldPtr(this, var_id, this%ncolumns, ats_field)
     do i=1,this%ncolumns
        ii = this%col_filter(i)
-       field(ii) = factor * ats_field(i)
+       field(i) = factor * ats_field(i)
        if (this%verbosity >= lverbosity) then
-          write(iulog,*) "GET: ", var_name, " : column ", i, " = ", field(ii)
+          write(iulog,*) "GET: ", var_name, " : column ", i, " = ", field(i)
        end if
     end do
   end subroutine EM_ATS_GetField_ScalarMultiply
@@ -517,18 +519,17 @@ contains
     integer, intent(in) :: ncolumns_all
 
     integer :: ncolumns
-    
+
     ! only 1 clump or memory is not contiguous
     if (nclumps /= 1) then
        call endrun("ATS only works with 1 clump.")
     end if
 
-    if (ncolumns /= filter(1)%num_hydrologyc) then
-       write(iulog,*) "WARNING: ATS does not support non-hydrology columns in spatially explicit mode.  Likely URBAN_REGION_ID /= 0."
-       ! call endrun("ATS does not support non-hydrology columns in spatially explicit mode.  Likely URBAN_REGION_ID /= 0.")
-    end if
-
     ncolumns = filter(1)%num_hydrologyc
+    if (ncolumns_all /= ncolumns) then
+       write(iulog,*) "ERROR: ATS does not support non-hydrology columns. ncolumns_all = ", ncolumns_all, " num_hydrologyc = ", ncolumns
+       call endrun("ATS does not support non-hydrology columns in spatially explicit mode. Check that the land use dataset has no urban, lake, or other non-natural land cover types (URBAN_REGION_ID == 0).")
+    end if
 
     ! number of soil columns == number of hydrology columns == number
     ! of soil PFTs
@@ -566,7 +567,7 @@ contains
     integer :: ats_ncols_local
     integer :: ats_ncols_global
     integer :: ats_nlevgrnd
-    integer :: i, j
+    integer :: i, j, ii
 
     real(c_double) :: ats_dzs(this%nlevgrnd)
     real(c_double) :: ats_areas(this%ncolumns)
@@ -577,6 +578,7 @@ contains
     call ats_get_mesh_info2(this%ats, ats_ncols_local, ats_ncols_global, ats_nlevgrnd, ats_dzs, ats_areas, ats_lats, ats_lons)
 
     ! assertions on shapes
+    write(iulog,*) "Partitioning: on rank ", iam, " ATS has ", ats_ncols_local
     if (ats_ncols_local /= this%ncolumns) then
        call endrun("ATS local ncolumns does not match requested ncolumns")
     end if
@@ -588,23 +590,33 @@ contains
     end if
 
     ! check dzs
+    ii = this%col_filter(1)
     do j=1,this%nlevgrnd
-       if (abs(ats_dzs(j) - col_pp%dz(1,j)) > 1.e-10_r8) then
+       if (abs(ats_dzs(j) - col_pp%dz(ii,j)) > 1.e-10_r8) then
           call endrun("ATS dzs do not match ELM dzs.")
        end if
     end do
 
     ! check column areas
     do i=1,this%ncolumns
-       if (abs(ats_areas(i) - grc_pp%area(i)) > 1.e-10_r8) then
+       ii = this%col_filter(i)
+       ! note ats_areas in m^2, grc_pp%area in km^2
+       ! use relative tolerance: areas computed via two independent paths (shapely->NetCDF->ELM
+       ! vs MSTK getCellVolume) can differ by ~1e-7 relative due to floating-point rounding
+       if (abs(1.e-6_r8 * ats_areas(i) - grc_pp%area(col_pp%gridcell(ii))) &
+            > 1.e-6_r8 * grc_pp%area(col_pp%gridcell(ii))) then
           write(iulog,*) "WARNING: ATS column areas do not match ELM grid cell areas -- perhaps incorrect ordering."
-          ! call endrun("ATS column areas do not match ELM grid cell areas -- perhaps incorrect ordering.")
+          write(iulog,*) "  on rank ", iam, " and column ", i
+          write(iulog,*) "  ATS area [km^2] = ", 1.e-6_r8 * ats_areas(i)
+          write(iulog,*) "  ELM area [km^2] = ", grc_pp%area(col_pp%gridcell(ii))
+          call endrun("ATS column areas do not match ELM grid cell areas -- perhaps incorrect ordering.")
        end if
     end do
+    write(iulog,*) "On rank ", iam, " areas match!"
 
     ! check lat lon
-    if (ats_lons(0) >= 0.) then
-       do j=1,this%ncolumns
+    if (ats_lons(1) >= 0.) then
+       do i=1,this%ncolumns
           if (abs(ats_lats(i) - 0.) > 1.e-8 .or. abs(ats_lons(i) - 0.) > 1.e-8) then
              call endrun("WARNING: ATS column lat/lon does not match ELM grid cell lat/lon -- perhaps incorrect ordering.")
           end if
@@ -662,13 +674,12 @@ contains
   ! -----------------------------------------------------------------------
   ! Special purpose -- get the water content fields
   !
-  subroutine EM_ATS_GetField_WaterContent(this, col_pp, soilstate_vars, col_ws, soilhydrology_vars, porosity)
+  subroutine EM_ATS_GetField_WaterContent(this, col_pp, soilstate_vars, col_ws, soilhydrology_vars)
     use elm_varcon                 , only : denh2o
 
     implicit none
     class(em_ats_type)                   :: this
     type(column_physical_properties)     , intent(in)    :: col_pp
-    real(r8), intent(in)                     :: porosity(:,:)
     type(soilstate_type)     , intent(inout)    :: soilstate_vars
     type(column_water_state) , intent(inout)    :: col_ws
     type(soilhydrology_type) , intent(inout) :: soilhydrology_vars
@@ -677,6 +688,7 @@ contains
     ! locals
     integer :: i, ii, j
     real(r8) :: h2osoi_liq_total
+    integer :: lverbosity = 2
     
     ! Pressure -- note, we don't set soilp here, just soilpsi.  Is
     ! soilp used?  GDB suggests not...
@@ -702,24 +714,28 @@ contains
     end do
 
     ! Water content
-    call EM_ATS_GetField_CopySubsurface(this, "saturation", ats_var_id%SATURATION_LIQUID, &
+    call EM_ATS_GetField_CopySubsurface(this, "water_content", ats_var_id%WATER_CONTENT, &
          col_ws%h2osoi_liq(:,1:this%nlevgrnd))
-    ! convert from saturation to kg / m^2
+    ! convert from volumetric water content to kg / m^2
     do i=1,this%ncolumns
        ii = this%col_filter(i)
        h2osoi_liq_total = 0._r8
+
        do j=1,this%nlevgrnd
-          col_ws%h2osoi_liq(ii,j) = col_ws%h2osoi_liq(ii,j) * porosity(ii,j) * col_pp%dz(ii,j) * denh2o
+          if (this%verbosity >= (lverbosity+1)) then
+             write(iulog,*) "GET: volumetric_water_content [-] : column ", i, " cell ", j, " = ", col_ws%h2osoi_liq(ii,j)
+          endif
+
+          col_ws%h2osoi_liq(ii,j) = col_ws%h2osoi_liq(ii,j) * denh2o * col_pp%dz(ii,j)
           h2osoi_liq_total = h2osoi_liq_total + col_ws%h2osoi_liq(ii,j)
-          if (this%verbosity >= 2) then
-             write(iulog,*) "GET: saturation : column ", i, " cell ", j, " = ", col_ws%h2osoi_liq(ii,j)
-             write(iulog,*) "ELM: porosity : column ", i, " cell ", j, " = ", porosity(ii,j)
+
+          if (this%verbosity >= (lverbosity+1)) then
              write(iulog,*) "ELM: dz : column ", i, " cell ", j, " = ", col_pp%dz(ii,j)
              write(iulog,*) "ELM: density = ", denh2o
-             write(iulog,*) "GET: h2osoi_liq : column ", i, " cell ", j, " = ", col_ws%h2osoi_liq(ii,j)
+             write(iulog,*) "GET: h2osoi_liq [kg m^-2] : column ", i, " cell ", j, " = ", col_ws%h2osoi_liq(ii,j)
           end if
        end do
-       if (this%verbosity >= 1) then
+       if (this%verbosity >= lverbosity) then
           write(iulog,*) "GET: h2osoi_liq total : column ", i, " total = ", h2osoi_liq_total
        end if
     end do
@@ -733,7 +749,7 @@ contains
     do i=1,this%ncolumns
        ii = this%col_filter(i)
        col_ws%h2osfc(ii) = col_ws%h2osfc(ii) * denh2o
-       if (this%verbosity >= 1) then
+       if (this%verbosity >= lverbosity) then
           write(iulog,*) "GET: h2osfc total : column ", i, " total = ", col_ws%h2osfc(ii)
        end if
     end do
@@ -757,10 +773,10 @@ contains
     real(r8) :: h2osoi_liq_tot
     real(c_double), pointer :: ats_surf_wc(:)
     real(c_double), pointer :: ats_wc(:)
-    
+    integer :: lverbosity = 2    
 
-    ! set porosity to be the liquid porosity (e.g. ice = soil)
-    call EM_ATS_SetField_CopySubsurface(this, "effective porosity", ats_var_id%EFFECTIVE_POROSITY, &
+    ! set base porosity to be the liquid porosity (e.g. ice = soil)
+    call EM_ATS_SetField_CopySubsurface(this, "base porosity", ats_var_id%BASE_POROSITY, &
          soilstate_vars%eff_porosity_col)
 
     ! set surface water content
@@ -769,7 +785,7 @@ contains
        ii = this%col_filter(i)
        ! h2osfc in mm --> m
        ats_surf_wc(i) = col_ws%h2osfc(ii) / denh2o
-       if (this%verbosity >= 1) then
+       if (this%verbosity >= lverbosity) then
           write(iulog,*) "SET: h2osfc total : column ", i, " total = ", col_ws%h2osfc(ii)
        end if
     end do
@@ -786,7 +802,7 @@ contains
           h2osoi_liq_tot = h2osoi_liq_tot + col_ws%h2osoi_liq(ii,j)
        end do
 
-       if (this%verbosity >= 1) then
+       if (this%verbosity >= lverbosity) then
           write(iulog,*) "SET: h2osoi_liq total : column ", i, " total = ", h2osoi_liq_tot
        end if
     end do
@@ -796,24 +812,31 @@ contains
   ! -----------------------------------------------------------------------
   ! Special purpose -- downregulate transpiration
   !
-  subroutine EM_ATS_GetField_ActualTranspiration(this, col_wf, photosyns_vars)
+  subroutine EM_ATS_GetField_ActualTranspiration(this, col_wf, veg_wf, photosyns_vars)
     implicit none
 
     class(em_ats_type)                                  :: this
     type(column_water_flux)             , intent(inout) :: col_wf
+    type(vegetation_water_flux)         , intent(inout) :: veg_wf
     type(photosyns_type), intent(inout) :: photosyns_vars
 
     ! locals
     integer :: i,ii, pp
     real(r8) :: downreg, downreg_eps, tot_trans, diff
     real(c_double), pointer :: ats_tot_trans(:)
-    
+    integer :: lverbosity = 2
+
     ! get the total transpiration from ATS
     call EM_ATS_GetFieldPtr(this, ats_var_id%COLUMN_TRANSPIRATION, this%ncolumns, ats_tot_trans)
 
     do i=1,this%ncolumns
        ii = this%col_filter(i)
        pp = this%pft_filter(i)
+
+       if (this%verbosity >= lverbosity) then
+          write(iulog,*) "     pot T : column ", i, " total = ", col_wf%qflx_tran_veg(ii)
+       end if
+
 
        downreg = 1._r8
        if (col_wf%qflx_tran_veg(ii) > 0.) then
@@ -830,7 +853,7 @@ contains
           ! debugging that adds an absolution portion, and one for
           ! downregulating carbon that is bounded below 1.
           downreg = min(tot_trans / col_wf%qflx_tran_veg(ii), 1.0_r8)
-          downreg_eps = tot_trans / max(col_wf%qflx_tran_veg(ii), 1.e-10)
+          downreg_eps = tot_trans / max(col_wf%qflx_tran_veg(ii), 1.e-8)
           diff = max(col_wf%qflx_tran_veg(ii) - tot_trans, 0._r8)
 
           if (downreg_eps > 1.01_r8 .OR. downreg < 0._r8) then
@@ -838,10 +861,12 @@ contains
              call endrun("ATS transpiration downregulation is out of expected bounds.")
           end if
 
-          ! evap_veg, evap_tot
+          ! evap_veg, evap_tot: update column-level and patch-level arrays
           col_wf%qflx_evap_veg(ii) = col_wf%qflx_evap_veg(ii) - diff
           col_wf%qflx_evap_tot(ii) = col_wf%qflx_evap_tot(ii) - diff
-          
+          veg_wf%qflx_evap_veg(pp) = veg_wf%qflx_evap_veg(pp) - diff
+          veg_wf%qflx_evap_tot(pp) = veg_wf%qflx_evap_tot(pp) - diff
+
           ! CO2 scales linearly with water? CHECK THIS! --ETC
           if (downreg < 1.0_r8) then
              photosyns_vars%fpsn_patch(pp) = photosyns_vars%fpsn_patch(pp) * downreg
@@ -853,11 +878,15 @@ contains
           ! reduce latent heat, increase sensible
           ! ... TODO: ETC
 
-          ! correct pft_tran_veg
+          ! correct pft_tran_veg: update column-level and patch-level arrays
           col_wf%qflx_tran_veg(ii) = tot_trans
+          veg_wf%qflx_tran_veg(pp) = tot_trans
+       else
+          tot_trans = 0.0_r8
        end if
 
-       if (this%verbosity >= 1) then
+       if (this%verbosity >= lverbosity) then
+          write(iulog,*) "     T actual : column ", i, " total = ", tot_trans
           write(iulog,*) "     T downreg : column ", i, " total = ", downreg
           write(iulog,*) "GET: actual transpiration : column ", i, " total = ", col_wf%qflx_tran_veg(ii)
        end if
@@ -868,23 +897,26 @@ contains
   ! -----------------------------------------------------------------------
   ! Special purpose -- downregulate evaporation
   !
-  subroutine EM_ATS_GetField_ActualEvaporation(this, col_wf)
+  subroutine EM_ATS_GetField_ActualEvaporation(this, col_wf, veg_wf)
     implicit none
 
     class(em_ats_type)                                  :: this
-    type(column_water_flux)             , intent(in)    :: col_wf
+    type(column_water_flux)             , intent(inout) :: col_wf
+    type(vegetation_water_flux)         , intent(inout) :: veg_wf
 
     ! locals
-    integer :: i,ii
+    integer :: i,ii, pp
     real(r8) :: downreg, evap, pot_evap, diff
     real(c_double), pointer :: ats_pot_evap(:), ats_evap(:)
-    
+    integer :: lverbosity = 2
+
     ! get the total evaporation from ATS
     call EM_ATS_GetFieldPtr(this, ats_var_id%EVAPORATION, this%ncolumns, ats_evap)
     call EM_ATS_GetFieldPtr(this, ats_var_id%POTENTIAL_EVAPORATION, this%ncolumns, ats_pot_evap)
 
     do i=1,this%ncolumns
        ii = this%col_filter(i)
+       pp = this%pft_filter(i)
 
        ! units: m/s --> mm/s
        evap = ats_evap(i) * 1.e3_r8
@@ -892,9 +924,9 @@ contains
        diff = pot_evap - evap
        downreg = 1.0
 
-       if (this%verbosity >= 1) then
+       if (this%verbosity >= lverbosity) then
           write(iulog,*) "     pot evaporation : column ", i, " = ", pot_evap
-          write(iulog,*) "     qflx_evap_tot : column ", i, " = ", col_wf%qflx_evap_tot
+          write(iulog,*) "     qflx_evap_tot : column ", i, " = ", col_wf%qflx_evap_tot(ii)
        end if
 
        if (pot_evap > 0. .and. diff > 0.) then
@@ -905,20 +937,19 @@ contains
              call endrun("ATS evaporation downregulation is out of expected bounds.")
           end if
 
-
           ! no distinction between h2osfc and h2osoi evap
-          !
-          ! take it all from soil evap
-          ! note these are all per unit column area
+          ! take it all from soil evap; update column-level and patch-level arrays
           col_wf%qflx_evap_soi(ii) = col_wf%qflx_evap_soi(ii) - diff
           col_wf%qflx_evap_tot(ii) = col_wf%qflx_evap_tot(ii) - diff
+          veg_wf%qflx_evap_soi(pp) = veg_wf%qflx_evap_soi(pp) - diff
+          veg_wf%qflx_evap_tot(pp) = veg_wf%qflx_evap_tot(pp) - diff
        end if
 
-       if (this%verbosity >= 1) then
+       if (this%verbosity >= lverbosity) then
           write(iulog,*) "     pot evaporation : column ", i, " = ", pot_evap
+          write(iulog,*) "GET: actual evaporation : column ", i, " = ", evap
           write(iulog,*) "     E downreg : column ", i, " total = ", downreg
           write(iulog,*) "     E difference : column ", i, " = ", diff
-          write(iulog,*) "GET: actual evaporation : column ", i, " = ", evap
        end if
     end do
   end subroutine EM_ATS_GetField_ActualEvaporation

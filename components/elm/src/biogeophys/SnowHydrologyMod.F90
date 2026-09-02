@@ -1008,6 +1008,8 @@ contains
                 if (h2osno(c) <= 0._r8) snow_depth(c) = 0._r8
                 ! this is where water is transfered from layer 0 (snow) to layer 1 (soil)
                 if (col_pp%is_soil(c) .or. urbpoi(l) .or. col_pp%is_crop(c)) then
+                   ! ETC/RPF - may need to revisit this if zwliq causes top soil layer 
+                   ! to be over saturation
                    h2osoi_liq(c,0) = 0.0_r8
                    h2osoi_liq(c,1) = h2osoi_liq(c,1) + zwliq(c)
                    qflx_snow2topsoi(c) = zwliq(c)/dtime
