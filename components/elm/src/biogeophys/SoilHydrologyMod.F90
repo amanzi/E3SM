@@ -82,6 +82,7 @@ contains
     real(r8) :: top_moist(bounds%begc:bounds%endc)         !temporary, soil moisture in top VIC layers
     real(r8) :: top_max_moist(bounds%begc:bounds%endc)     !temporary, maximum soil moisture in top VIC layers
     real(r8) :: top_ice(bounds%begc:bounds%endc)           !temporary, ice len in top VIC layers
+    real(r8) :: exp_minus_three                            !hoisted constant exp(-3) for cache optimization
     character(len=32) :: subname = 'SurfaceRunoff'         !subroutine name
     !-----------------------------------------------------------------------
 
@@ -126,11 +127,14 @@ contains
          i_0              =>    soilhydrology_vars%i_0_col            & ! Output: [real(r8) (:)   ]  column average soil moisture in top VIC layers (mm)
          )
 
-      ! Get time step
-      do fc = 1, num_hydrologyc
-         c = filter_hydrologyc(fc)
-         nlevbed = nlev2bed(c)
-         do j = 1,nlevbed
+      ! Hoist constant for cache optimization (BFB-safe)
+      exp_minus_three = exp(-3._r8)
+
+      ! Inverted to level-outer / column-filter-inner for cache locality
+      do j = 1, nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            if (j > nlev2bed(c)) cycle
 
             ! Porosity of soil, partial volume of ice and liquid, fraction of ice in each layer,
             ! fractional impermeability
@@ -142,7 +146,7 @@ contains
                icefrac(c,j) = min(1._r8,vol_ice(c,j)/watsat(c,j))
             endif
 
-            fracice(c,j) = max(0._r8,exp(-3._r8*(1._r8-icefrac(c,j)))- exp(-3._r8))/(1.0_r8-exp(-3._r8))
+            fracice(c,j) = max(0._r8,exp(-3._r8*(1._r8-icefrac(c,j)))- exp_minus_three)/(1.0_r8-exp_minus_three)
          end do
       end do
 
@@ -432,10 +436,11 @@ contains
 
 
        ! Infiltration into surface soil layer (minus the evaporation)
-       do fc = 1, num_hydrologyc
-          c = filter_hydrologyc(fc)
-          nlevbed = nlev2bed(c)
-          do j = 1,nlevbed
+       ! Inverted to level-outer / column-filter-inner for cache locality
+       do j = 1, nlevgrnd
+          do fc = 1, num_hydrologyc
+             c = filter_hydrologyc(fc)
+             if (j > nlev2bed(c)) cycle
              ! Porosity of soil, partial volume of ice and liquid
              vol_ice(c,j) = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
              eff_porosity(c,j) = max(0.01_r8,watsat(c,j)-vol_ice(c,j))
@@ -888,11 +893,11 @@ contains
 
 
        ! Convert layer thicknesses from m to mm
-
-       do fc = 1, num_hydrologyc
-          c = filter_hydrologyc(fc)
-          nlevbed = nlev2bed(c)
-          do j = 1,nlevbed
+       ! Inverted to level-outer / column-filter-inner for cache locality
+       do j = 1, nlevgrnd
+          do fc = 1, num_hydrologyc
+             c = filter_hydrologyc(fc)
+             if (j > nlev2bed(c)) cycle
              dzmm(c,j) = dz(c,j)*1.e3_r8
           end do
        end do
@@ -1273,10 +1278,11 @@ contains
 
 
        ! Convert layer thicknesses from m to mm
-        do fc = 1, num_hydrologyc
-          c = filter_hydrologyc(fc)
-          nlevbed = nlev2bed(c)
-          do j = 1,nlevbed
+       ! Inverted to level-outer / column-filter-inner for cache locality
+       do j = 1, nlevgrnd
+          do fc = 1, num_hydrologyc
+             c = filter_hydrologyc(fc)
+             if (j > nlev2bed(c)) cycle
              dzmm(c,j) = dz(c,j)*1.e3_r8
 
              vol_ice = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
