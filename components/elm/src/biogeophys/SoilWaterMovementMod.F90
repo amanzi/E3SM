@@ -301,6 +301,7 @@ contains
     integer  :: jtop(bounds%begc:bounds%endc)                ! top level at each column
     integer  :: jbot(bounds%begc:bounds%endc)                ! bottom level at each column
     real(r8) :: delta_z_zwt
+    real(r8) :: rdtime                                       ! reciprocal of dtime (BFB-safe hoist)
     real(r8) :: hk(bounds%begc:bounds%endc,1:nlevgrnd)        ! hydraulic conductivity [mm h2o/s]
     real(r8) :: dhkdw(bounds%begc:bounds%endc,1:nlevgrnd)     ! d(hk)/d(vol_liq)
     real(r8) :: amx(bounds%begc:bounds%endc,1:nlevgrnd+1)     ! "a" left off diagonal of tridiagonal matrix
@@ -384,19 +385,20 @@ contains
       ! Because the depths in this routine are in mm, use local
       ! variable arrays instead of pointers
 
-      do fc = 1, num_hydrologyc
-        c = filter_hydrologyc(fc)
-        nlevbed = nlev2bed(c)
-        do j = 1, nlevbed
-            zmm(c,j) = z(c,j)*1.e3_r8
-            dzmm(c,j) = dz(c,j)*1.e3_r8
-            zimm(c,j) = zi(c,j)*1.e3_r8
+      ! Inverted to level-outer / column-filter-inner for cache locality
+      do j = 1, nlevgrnd
+        do fc = 1, num_hydrologyc
+          c = filter_hydrologyc(fc)
+          if (j > nlev2bed(c)) cycle
+          zmm(c,j) = z(c,j)*1.e3_r8
+          dzmm(c,j) = dz(c,j)*1.e3_r8
+          zimm(c,j) = zi(c,j)*1.e3_r8
 
-            ! calculate icefrac up here
-            vol_ice(c,j) = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
-            icefrac(c,j) = min(1._r8,vol_ice(c,j)/watsat(c,j))
-            vwc_liq(c,j) = max(h2osoi_liq(c,j),1.0e-6_r8)/(dz(c,j)*denh2o)
-         end do
+          ! calculate icefrac up here
+          vol_ice(c,j) = min(watsat(c,j), h2osoi_ice(c,j)/(dz(c,j)*denice))
+          icefrac(c,j) = min(1._r8,vol_ice(c,j)/watsat(c,j))
+          vwc_liq(c,j) = max(h2osoi_liq(c,j),1.0e-6_r8)/(dz(c,j)*denh2o)
+        end do
       end do
 
       do fc = 1, num_hydrologyc
@@ -451,10 +453,11 @@ contains
 
       ! calculate the equilibrium water content based on the water table depth
 
-      do fc = 1, num_hydrologyc
-         c = filter_hydrologyc(fc)
-         nlevbed = nlev2bed(c)
-         do j = 1, nlevbed
+      ! Inverted to level-outer / column-filter-inner for cache locality
+      do j = 1, nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            if (j > nlev2bed(c)) cycle
             if ((zwtmm(c) <= zimm(c,j-1))) then
                vol_eq(c,j) = watsat(c,j)
 
@@ -501,10 +504,11 @@ contains
       ! Hydraulic conductivity and soil matric potential and their derivatives
 
       sdamp = 0._r8
-      do fc = 1, num_hydrologyc
-         c = filter_hydrologyc(fc)
-         nlevbed = nlev2bed(c)
-         do j = 1, nlevbed
+      ! Inverted to level-outer / column-filter-inner for cache locality
+      do j = 1, nlevgrnd
+         do fc = 1, num_hydrologyc
+            c = filter_hydrologyc(fc)
+            if (j > nlev2bed(c)) cycle
             ! compute hydraulic conductivity based on liquid water content only
 
             if (origflag == 1) then
@@ -578,6 +582,9 @@ contains
 
       ! Set up r, a, b, and c vectors for tridiagonal solution
 
+      ! Hoist reciprocal of dtime (BFB-safe for repeated constant)
+      rdtime = 1._r8/dtime
+
       ! Node j=1 (top)
 
       j = 1
@@ -592,7 +599,7 @@ contains
          dqodw2(c,j) = -( hk(c,j)*dsmpdw(c,j+1) + num*dhkdw(c,j))/den
          rmx(c,j) =  qin(c,j) - qout(c,j) - qflx_rootsoi_col(c,j)
          amx(c,j) =  0._r8
-         bmx(c,j) =  dzmm(c,j)*(sdamp+1._r8/dtime) + dqodw1(c,j)
+         bmx(c,j) =  dzmm(c,j)*(sdamp+rdtime) + dqodw1(c,j)
          cmx(c,j) =  dqodw2(c,j)
       end do
 
@@ -616,7 +623,7 @@ contains
             dqodw2(c,j) = -( hk(c,j)*dsmpdw(c,j+1) + num*dhkdw(c,j))/den
             rmx(c,j)    =  qin(c,j) - qout(c,j) -  qflx_rootsoi_col(c,j)
             amx(c,j)    = -dqidw0(c,j)
-            bmx(c,j)    =  dzmm(c,j)/dtime - dqidw1(c,j) + dqodw1(c,j)
+            bmx(c,j)    =  dzmm(c,j)*rdtime - dqidw1(c,j) + dqodw1(c,j)
             cmx(c,j)    =  dqodw2(c,j)
          end do
       end do
@@ -638,13 +645,13 @@ contains
             dqodw1(c,j) =  0._r8
             rmx(c,j)    =  qin(c,j) - qout(c,j) - qflx_rootsoi_col(c,j)
             amx(c,j)    = -dqidw0(c,j)
-            bmx(c,j)    =  dzmm(c,j)/dtime - dqidw1(c,j) + dqodw1(c,j)
+            bmx(c,j)    =  dzmm(c,j)*rdtime - dqidw1(c,j) + dqodw1(c,j)
             cmx(c,j)    =  0._r8
 
             ! next set up aquifer layer; hydrologically inactive
             rmx(c,j+1) = 0._r8
             amx(c,j+1) = 0._r8
-            bmx(c,j+1) = dzmm(c,j+1)/dtime
+            bmx(c,j+1) = dzmm(c,j+1)*rdtime
             cmx(c,j+1) = 0._r8
          else ! water table is below soil column
 
@@ -687,7 +694,7 @@ contains
 
             rmx(c,j) =  qin(c,j) - qout(c,j) - qflx_rootsoi_col(c,j)
             amx(c,j) = -dqidw0(c,j)
-            bmx(c,j) =  dzmm(c,j)/dtime - dqidw1(c,j) + dqodw1(c,j)
+            bmx(c,j) =  dzmm(c,j)*rdtime - dqidw1(c,j) + dqodw1(c,j)
             cmx(c,j) =  dqodw2(c,j)
 
             ! next set up aquifer layer; den/num unchanged, qin=qout
@@ -699,12 +706,12 @@ contains
             if (use_var_soil_thick) then
                rmx(c,j+1) = 0._r8
                amx(c,j+1) = 0._r8
-               bmx(c,j+1) = dzmm(c,j+1)/dtime
+               bmx(c,j+1) = dzmm(c,j+1)*rdtime
                cmx(c,j+1) = 0._r8
             else
                rmx(c,j+1) =  qin(c,j+1) - qout(c,j+1)
                amx(c,j+1) = -dqidw0(c,j+1)
-               bmx(c,j+1) =  dzmm(c,j+1)/dtime - dqidw1(c,j+1) + dqodw1(c,j+1)
+               bmx(c,j+1) =  dzmm(c,j+1)*rdtime - dqidw1(c,j+1) + dqodw1(c,j+1)
                cmx(c,j+1) =  0._r8
             end if
          endif
@@ -783,8 +790,8 @@ contains
                endif
 
                ! To limit qcharge  (for the first several timesteps)
-               qcharge(c) = max(-10.0_r8/dtime,qcharge(c))
-               qcharge(c) = min( 10.0_r8/dtime,qcharge(c))
+               qcharge(c) = max(-10.0_r8*rdtime,qcharge(c))
+               qcharge(c) = min( 10.0_r8*rdtime,qcharge(c))
             else
                ! if water table is below soil column, compute qcharge from dwat2(11)
                qcharge(c) = 0._r8
@@ -820,11 +827,11 @@ contains
                endif
 
                ! To limit qcharge  (for the first several timesteps)
-               qcharge(c) = max(-10.0_r8/dtime,qcharge(c))
-               qcharge(c) = min( 10.0_r8/dtime,qcharge(c))
+               qcharge(c) = max(-10.0_r8*rdtime,qcharge(c))
+               qcharge(c) = min( 10.0_r8*rdtime,qcharge(c))
             else
             ! if water table is below soil column, compute qcharge from dwat2(11)
-               qcharge(c) = dwat2(c,nlevsoi+1)*dzmm(c,nlevsoi+1)/dtime
+               qcharge(c) = dwat2(c,nlevsoi+1)*dzmm(c,nlevsoi+1)*rdtime
             endif
          endif
       end do
@@ -1014,7 +1021,7 @@ contains
                 ! if the amount of water being drained from a given layer
                 ! exceeds the allowable water, limit the drainage
                 if (qflx_drain_layer*dtime > (h2osoi_liq(c,j)-watmin)) then
-                   qflx_drain_layer = (h2osoi_liq(c,j)-watmin)/dtime
+                   qflx_drain_layer = (h2osoi_liq(c,j)-watmin)*rdtime
                 endif
                 qflx_drain_tot = qflx_drain_tot + qflx_drain_layer
 
