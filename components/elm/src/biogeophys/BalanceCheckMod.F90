@@ -170,9 +170,10 @@ contains
      use column_varcon     , only : icol_road_perv, icol_road_imperv
      use landunit_varcon   , only : istice_mec, istice, istdlak, istsoil,istcrop,istwet
      use elm_varctl        , only : create_glacier_mec_landunit, use_IM2_hillslope_hydrology
-     use elm_initializeMod , only : surfalb_vars  
+     use elm_initializeMod , only : surfalb_vars
      use CanopyStateType   , only : canopystate_type
      use subgridAveMod
+     use elm_water_balance_kernel, only : elm_water_balance_error
      !
      ! !ARGUMENTS:
      type(bounds_type)     , intent(in)    :: bounds
@@ -335,12 +336,15 @@ contains
           ! add qflx_drain_perched and qflx_flood
           ! add qflx_from_uphill and qflx_to_downhill
           if (col_pp%active(c)) then
-             errh2o(c) = endwb(c) - begwb(c) &
-                  - (forc_rain_col(c) + forc_snow_col(c)  + qflx_floodc(c) + qflx_from_uphill(c) &
-                  + qflx_surf_irrig_col(c) + qflx_over_supply_col(c) &
-                  - qflx_evap_tot(c) - qflx_surf(c)  - qflx_h2osfc_surf(c) - qflx_to_downhill(c) &
-                  - qflx_qrgwl(c) - qflx_drain(c) - qflx_drain_perched(c) - qflx_snwcp_ice(c) - qflx_ice_runoff_xs(c) &
-                  - qflx_lateral(c) + qflx_h2orof_drain(c) - qflx_lnd2ocn(c) + qflx_h2oocn_drain(c)) * dtime
+             ! errh2o formula lives in elm_water_balance_kernel so that ATS can
+             ! reuse the identical expression across the coupling boundary.
+             errh2o(c) = elm_water_balance_error( &
+                  endwb(c), begwb(c), forc_rain_col(c), forc_snow_col(c), qflx_floodc(c), &
+                  qflx_from_uphill(c), qflx_surf_irrig_col(c), qflx_over_supply_col(c), &
+                  qflx_evap_tot(c), qflx_surf(c), qflx_h2osfc_surf(c), qflx_to_downhill(c), &
+                  qflx_qrgwl(c), qflx_drain(c), qflx_drain_perched(c), qflx_snwcp_ice(c), &
+                  qflx_ice_runoff_xs(c), qflx_lateral(c), qflx_h2orof_drain(c), &
+                  qflx_lnd2ocn(c), qflx_h2oocn_drain(c), dtime)
 
              dwb(c) = (endwb(c)-begwb(c))/dtime
 
