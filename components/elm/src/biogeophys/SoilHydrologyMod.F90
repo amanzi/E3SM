@@ -712,36 +712,31 @@ contains
                    qflx_gross_infl_soil(c) = qflx_gross_infl_soil(c) + qflx_h2osfc_drain(c)
                 endif
 
-             endif ! use_ats
+             	!9. add drainage from coastal inundation to qflx_infl (ocean land one way coupling)
+                if (use_ocn_lnd_one_way) then
 
-             !9. add drainage from coastal inundation to qflx_infl (ocean land one way coupling)
-             if (use_ocn_lnd_one_way) then
+                  ! estimate the available volume [mm H2O] in the first soil layer for floodplain infiltration
+                  h2osoi_left_vol1 = max(0._r8,(pondmx+watsat(c,1)*dz(c,1)*1.e3_r8-h2osoi_ice(c,1)-watmin)) - &
+                                     max(0._r8,h2osoi_liq(c,1)-watmin)
+                  if (h2osoi_left_vol1 < 0._r8) then
+                    h2osoi_left_vol1 = 0._r8
+                  endif
 
-               ! estimate the available volume [mm H2O] in the first soil layer for floodplain infiltration
-               h2osoi_left_vol1 = max(0._r8,(pondmx+watsat(c,1)*dz(c,1)*1.e3_r8-h2osoi_ice(c,1)-watmin)) - &
-                                  max(0._r8,h2osoi_liq(c,1)-watmin)
-               if (h2osoi_left_vol1 < 0._r8) then
-                   h2osoi_left_vol1 = 0._r8
-               endif
+                 if (frac_h2oocn(c) > 0._r8) then
+                    h2osoi_left_vol1 = frac_h2oocn(c) * h2osoi_left_vol1
+                    ! no drainage from ocn inundation if the 1st layer soil is saturated
+                    qflx_h2oocn_drain(c)=min(frac_h2oocn(c)*qinmax, h2osoi_left_vol1/dtime)
+                 else
+                    qflx_h2oocn_drain(c)=0._r8
+                 endif
 
-               if (frac_h2oocn(c) > 0._r8) then
-                  h2osoi_left_vol1 = frac_h2oocn(c) * h2osoi_left_vol1
-                  ! no drainage from ocn inundation if the 1st layer soil is saturated
-                  qflx_h2oocn_drain(c)=min(frac_h2oocn(c)*qinmax, h2osoi_left_vol1/dtime)
+                 qflx_infl(c) = qflx_infl(c) + qflx_h2oocn_drain(c) 
+                 qflx_gross_infl_soil(c) = qflx_gross_infl_soil(c) + qflx_h2osfc_drain(c) + qflx_h2oocn_drain(c) 
+
                else
-                  qflx_h2oocn_drain(c)=0._r8
+                 qflx_gross_infl_soil(c) = qflx_gross_infl_soil(c) + qflx_h2osfc_drain(c)
                endif
-
-               qflx_infl(c) = qflx_infl(c) + qflx_h2oocn_drain(c) 
-               qflx_gross_infl_soil(c) = qflx_gross_infl_soil(c) + qflx_h2osfc_drain(c) + qflx_h2oocn_drain(c) 
-
-             else
-               qflx_gross_infl_soil(c) = qflx_gross_infl_soil(c) + qflx_h2osfc_drain(c)
-             endif
-
-             endif ! use_ats
-
-
+	    endif ! use_ats
           else
              ! non-vegetated landunits (i.e. urban) use original CLM4 code
              if (snl(c) >= 0) then
