@@ -739,6 +739,8 @@ contains
                qflx_gross_infl_soil(c) = qflx_gross_infl_soil(c) + qflx_h2osfc_drain(c)
              endif
 
+             endif ! use_ats
+
 
           else
              ! non-vegetated landunits (i.e. urban) use original CLM4 code
@@ -1285,10 +1287,10 @@ contains
        ! Initial set
        do fc = 1, num_hydrologyc
           c = filter_hydrologyc(fc)
-          qflx_lnd2ocn(c)  = 0._r8
           if (.not. use_ats) then
              qflx_drain(c)    = 0._r8
           end if
+          qflx_lnd2ocn(c)  = 0._r8
           rsub_bot(c)      = 0._r8
           qflx_rsub_sat(c) = 0._r8
           rsub_top(c)      = 0._r8
@@ -1301,7 +1303,6 @@ contains
        
        ! The layer index of the first unsaturated layer, i.e., the layer right above
        ! the water table
-
        do fc = 1, num_hydrologyc !TODO: introduce a filter for coastline grid cells
           c = filter_hydrologyc(fc)
           g = col_pp%gridcell(c)

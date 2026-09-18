@@ -66,6 +66,10 @@ module atm2lndType
       real(r8), pointer ::  ndep1                      (:,:,:) => null()
       real(r8), pointer ::  ndep2                      (:,:,:) => null()
       real(r8), pointer ::  aerodata                 (:,:,:,:) => null()
+      integer,  pointer :: buffer_start_tidx               (:) => null()  !(1:14) abs file index of buffer slot 1, per variable
+      integer,  pointer :: read_ntimes                          => null()  !rolling buffer depth (-1 = read entire record)
+      integer,  pointer :: gtoget_saved                    (:) => null()  !(begg:endg) saved grid-to-file-cell mapping
+      integer,  pointer :: ztoget_saved                    (:) => null()  !(begg:endg) saved grid-to-zone mapping
 #endif
      ! atm->lnd not downscaled
      real(r8), pointer :: forc_u_grc                    (:)   => null() ! atm wind speed, east direction (m/s)
@@ -224,14 +228,14 @@ contains
     allocate(this%npf                                (1:14))        ; this%npf                           (:)   = ival
     !allocate(this%atm_input       (14,begg:endg,1,1:600000))        ; this%atm_input               (:,:,:,:)   = ival_short
     allocate(this%loaded_bypassdata                        )        ; this%loaded_bypassdata                   = 0
-    allocate(this%add_offsets                        (1:14))        ; this%add_offsets                   (:)   = ival_float 
-    allocate(this%scale_factors                      (1:14))        ; this%scale_factors                 (:)   = ival_float
+    allocate(this%add_offsets                        (1:14))        ; this%add_offsets                   (:)   = 0.0_r8
+    allocate(this%scale_factors                      (1:14))        ; this%scale_factors                 (:)   = 1.0_r8
     allocate(this%startyear_met                            )        ; this%startyear_met                       = ival_int
     allocate(this%endyear_met_spinup                       )        ; this%endyear_met_spinup                  = ival_int
     allocate(this%endyear_met_trans                        )        ; this%endyear_met_trans                   = ival_int
     allocate(this%timeres                            (1:14))        ; this%timeres                       (:)   = ival
     allocate(this%var_offset              (14,begg:endg,12))        ; this%var_offset                (:,:,:)   = ival
-    allocate(this%var_mult                (14,begg:endg,12))        ; this%var_mult                  (:,:,:)   = ival
+    allocate(this%var_mult                (14,begg:endg,12))        ; this%var_mult                  (:,:,:)   = 1.0_r8
     allocate(this%co2_input                      (1,1,3000))        ; this%co2_input                 (:,:,:)   = ival    
     allocate(this%c13o2_input                    (1,1,3000))        ; this%c13o2_input               (:,:,:)   = ival
     allocate(this%ndepind                     (begg:endg,2))        ; this%ndepind                     (:,:)   = ival_int
@@ -244,6 +248,10 @@ contains
     allocate(this%ndep1                          (144,96,1))        ; this%ndep1                     (:,:,:)   = ival
     allocate(this%ndep2                          (144,96,1))        ; this%ndep2                     (:,:,:)   = ival
     allocate(this%aerodata                   (14,144,96,14))        ; this%aerodata                (:,:,:,:)   = ival
+    allocate(this%buffer_start_tidx                  (1:14))        ; this%buffer_start_tidx             (:)   = 1
+    allocate(this%read_ntimes                              )        ; this%read_ntimes                         = -1
+    allocate(this%gtoget_saved               (begg:endg)   )        ; this%gtoget_saved                  (:)   = 0
+    allocate(this%ztoget_saved               (begg:endg)   )        ; this%ztoget_saved                  (:)   = 0
     !END DMR
 #endif
     allocate(this%forc_u_grc                    (begg:endg))        ; this%forc_u_grc                    (:)   = ival
