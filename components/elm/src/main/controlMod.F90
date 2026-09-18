@@ -66,7 +66,7 @@ module controlMod
                         use_c13, use_c14, fates_paramfile, use_fates, &
                         use_betr, use_lai_streams, metdata_type, metdata_bypass, &
                         metdata_biases, co2_file, aero_file, metdata_read_buffer_ntimes, &
-                        use_elm_interface, use_elm_bgc, use_pflotran, &
+                        use_elm_interface, use_elm_bgc, use_pflotran, pf_hmode, &
                         use_vsfm, vsfm_satfunc_type, vsfm_use_dynamic_linesearch, &
                         vsfm_lateral_model_type, vsfm_include_seepage_bc, &
                         use_hydrstress, lateral_connectivity, domain_decomp_type, &
