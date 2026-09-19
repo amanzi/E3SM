@@ -905,6 +905,7 @@ contains
      real(r8)             :: z_up, z_dn                    ! [m]
      real(r8)             :: qflx_drain_layer              ! Drainage flux from a soil layer (mm H2O/s)
      real(r8)             :: qflx_drain_tot                ! Cummulative drainage flux from soil layers within a column (mm H2O/s)
+     real(r8)             :: rdtime                        ! reciprocal of dtime (BFB-safe hoist)
      !-----------------------------------------------------------------------
 
      associate( &
@@ -950,6 +951,7 @@ contains
        ! Get time step
 
         dtime = get_step_size()
+        rdtime = 1._r8/dtime
 
        mflx_infl_col(:)              = 0.d0
        mflx_dew_col(:)               = 0.d0
