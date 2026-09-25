@@ -1,0 +1,89 @@
+name: E3SM CI for ELM-ATS
+
+# Keep all workflow triggers under a single top-level 'on' block.
+on:
+  # Run on pull requests targeting any branch.
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
+      - reopened
+    paths:
+      - '.github/workflows/e3sm-ci-for-elm-ats.yml'
+      - 'cime_config/**'
+      - 'components/elm/**'
+      - 'driver-moab/**'
+      - 'driver-mct/**'
+      - '!components/eam/docs/**'
+      - '!components/eam/mkdocs.yml'
+      - '!components/eamxx/docs/**'
+      - '!components/eamxx/mkdocs.yml'
+      - '!components/elm/docs/**'
+      - '!components/elm/mkdocs.yml'
+
+  # Also run on pushes to any branch (e.g. after a merge).
+  push:
+    paths:
+      - '.github/workflows/e3sm-ci-for-elm-ats.yml'
+      - 'cime_config/**'
+      - 'components/elm/**'
+      - 'driver-moab/**'
+      - 'driver-mct/**'
+      - '!components/eam/docs/**'
+      - '!components/eam/mkdocs.yml'
+      - '!components/eamxx/docs/**'
+      - '!components/eamxx/mkdocs.yml'
+      - '!components/elm/docs/**'
+      - '!components/elm/mkdocs.yml'
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  ci:
+    # Restrict execution to the amanzi/E3SM fork used for ELM-ATS.
+    if: ${{ github.repository == 'amanzi/E3SM' }}
+    name: ELM CIME / ${{ matrix.test }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - SMS_Vmct_D_Ln5_P4.ne4pg2_oQU480.F2010.ghci-oci_gnu
+          - ERS_Vmct_Ld5_P4.ne4pg2_oQU480.F2010.ghci-oci_gnu.eam-wcprod_F2010
+          - ERS_Vmct_P4.ne4pg2_oQU480.A.ghci-oci_gnu
+          - ERS_Vmct_P4.ne4pg2_oQU480.I1850ELMCN.ghci-oci_gnu.elm-qian_1948
+    container:
+      image: ghcr.io/e3sm-project/containers-ghci:ghci-0.2.1
+
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          show-progress: false
+          submodules: recursive
+      -
+        name: CIME
+        working-directory: cime/scripts
+        run: |
+          ./create_test ${{ matrix.test }} --wait --debug
+      -
+        name: Artifacts
+        uses: actions/upload-artifact@v7
+        if: ${{ always() }}
+        with:
+          name: ${{ matrix.test }}
+          path: |
+            /projects/e3sm/scratch/${{ matrix.test }}*/TestStatus.log
+            /projects/e3sm/scratch/${{ matrix.test }}*/bld/*.bldlog.*
+            /projects/e3sm/scratch/${{ matrix.test }}*/run/*.log.*
+            /projects/e3sm/scratch/${{ matrix.test }}*/run/*.cprnc.out
