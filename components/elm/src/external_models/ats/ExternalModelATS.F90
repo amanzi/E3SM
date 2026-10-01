@@ -14,7 +14,7 @@ module ExternalModelATS
   use histFileMod                  , only : hist_nhtfrq
   use elm_varpar                   , only : nlevgrnd
   use elm_varctl                   , only : iulog
-  use elm_varctl                   , only : use_ats, use_ats_ic
+  use elm_varctl                   , only : use_ats, use_ats_ic, ats_verbosity
 
   use ColumnType                 , only : column_physical_properties
   use GridcellType               , only : gridcell_physical_properties_type
@@ -63,7 +63,7 @@ contains
     type(em_ats_type) :: this
 
     this = EM_ATS_Create2(ats_inputdir, ats_inputfile, mpicom)
-    this%verbosity = 1
+    this%verbosity = ats_verbosity
   end subroutine EM_ATS_Create
 
   !------------------------------------------------------------------------
@@ -280,7 +280,9 @@ contains
     end if
 
     ! -- call the advance method
-    write(iulog,*) "CALLING ats_advance"
+    if (this%verbosity >= 2) then
+       write(iulog,*) "CALLING ats_advance"
+    end if
     call ats_advance(this%ats, dt, do_checkpoint, do_vis)
 
     ! pass state back to ELM
