@@ -12,7 +12,7 @@ module surfrdMod
   use elm_varpar      , only : numpft, numcft
   use landunit_varcon , only : numurbl
   use elm_varcon      , only : grlnd
-  use elm_varctl      , only : iulog, scmlat, scmlon, single_column, firrig_data
+  use elm_varctl      , only : iulog, scmlat, scmlon, single_column, firrig_data, ats_verbosity
   use elm_varctl      , only : create_glacier_mec_landunit
   use surfrdUtilsMod  , only : check_sums_equal_1_2d, check_sums_equal_1_3d
   use surfrdUtilsMod  , only : collapse_crop_types, collapse_crop_var
@@ -226,9 +226,11 @@ contains
           call ncd_io(ncid=ncid, varname='area_km2', flag='read', data=ldomain%area, &
                dim1name=grlnd, readvar=readvar)
           if (.not. readvar) call endrun( msg=' ERROR: area_km2 NOT on file'//errMsg(__FILE__, __LINE__))
-          write(iulog,*) 'surfrd_get_grid: rank ', iam, &
-               ' read area_km2 for cells ', begg, '..', endg, &
-               '; first 3 values:', ldomain%area(begg), ldomain%area(min(begg+1,endg)), ldomain%area(min(begg+2,endg))
+          if (ats_verbosity >= 2) then
+             write(iulog,*) 'surfrd_get_grid: rank ', iam, &
+                  ' read area_km2 for cells ', begg, '..', endg, &
+                  '; first 3 values:', ldomain%area(begg), ldomain%area(min(begg+1,endg)), ldomain%area(min(begg+2,endg))
+          end if
        else
           call ncd_io(ncid=ncid, varname= 'area', flag='read', data=ldomain%area, &
                dim1name=grlnd, readvar=readvar)

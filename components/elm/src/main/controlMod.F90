@@ -101,7 +101,7 @@ module controlMod
                         use_snicar_frc, use_snicar_ad, use_firn_percolation_and_compaction, &
                         use_extrasnowlayers, use_T_rho_dependent_snowthk, &
                         use_vancouver, use_mexicocity, use_noio, use_finetop_rad, &
-                        use_ats, use_ats_ic                        
+                        use_ats, use_ats_ic, ats_verbosity
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -365,7 +365,7 @@ contains
     namelist /elm_inparm/ use_elm_interface, use_elm_bgc, use_pflotran
 
     ! ats
-    namelist /elm_inparm/ use_ats, use_ats_ic
+    namelist /elm_inparm/ use_ats, use_ats_ic, ats_verbosity
     
     namelist /elm_inparm/ use_dynroot
 
@@ -1097,6 +1097,7 @@ contains
     ! ats
     call mpi_bcast (use_ats, 1, MPI_LOGICAL, 0, mpicom, ier)
     call mpi_bcast (use_ats_ic, 1, MPI_LOGICAL, 0, mpicom, ier)
+    call mpi_bcast (ats_verbosity, 1, MPI_INTEGER, 0, mpicom, ier)
 
     !cpl_bypass
      call mpi_bcast (metdata_type,   len(metdata_type),   MPI_CHARACTER, 0, mpicom, ier)

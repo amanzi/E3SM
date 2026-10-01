@@ -11,7 +11,7 @@ module decompInitMod
   use shr_log_mod     , only : errMsg => shr_log_errMsg
   use spmdMod         , only : masterproc, iam, npes, mpicom, comp_id
   use abortutils      , only : endrun
-  use elm_varctl      , only : iulog, use_fates
+  use elm_varctl      , only : iulog, use_fates, ats_verbosity
   use elm_varcon      , only : grlnd
   use GridcellType    , only : grc_pp
   use LandunitType    , only : lun_pp
@@ -437,7 +437,9 @@ contains
 
     begg = 0
     do pid = 0,npes-1
-       write(iulog,*) 'on rank ', pid, ' begg at ', begg
+       if (ats_verbosity >= 2) then
+          write(iulog,*) 'on rank ', pid, ' begg at ', begg
+       end if
        cid = pid + 1
        clumps(cid)%begg = begg + 1
        clumps(cid)%endg = begg + gcount(cid)
@@ -506,8 +508,7 @@ contains
     call mct_gsMap_init(gsMap_lnd_gdc2glo, gindex, mpicom, comp_id, lsize, gsize)
     deallocate(gindex)
 
-    if (masterproc) then
-       write(iulog,*)'WTF ATS'
+    if (masterproc .and. ats_verbosity >= 2) then
        write(iulog,*)' Surface Grid Characteristics'
        write(iulog,*)'   longitude points               = ',lni
        write(iulog,*)'   latitude points                = ',lnj
