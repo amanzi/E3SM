@@ -440,6 +440,8 @@ module elm_varctl
   logical, public :: use_ats        = .false.
   ! ATS for initial water condition only
   logical, public :: use_ats_ic     = .false.
+  ! ATS debug verbosity (0 = silent, 1 = summary diagnostics, 2 = per-field get/set traces)
+  integer, public :: ats_verbosity  = 0
 
   !----------------------------------------------------------
   ! Stub EM switches

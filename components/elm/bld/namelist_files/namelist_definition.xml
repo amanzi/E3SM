@@ -2117,6 +2117,15 @@ topounit level. Based on the IM2 implementation from NGEE Arctic project.
     Runtime flag to turn on/off EMI-em/ats interface only for the water initial condition.
 </entry>
 
+<entry id="ats_verbosity" type="integer" category="default_settings"
+    group="elm_inparm"
+    valid_values="0,1,2"
+    value="0">
+    Verbosity level for ELM-ATS coupling debug output (0=silent/default, 1=per-timestep
+    water balance summary, 2=per-field get/set diagnostics). Only has effect when
+    use_ats or use_ats_ic is true.
+</entry>
+
 <entry id="ats_inputdir" type="char*256" category="elm_ats"
     group="elm_ats_inparm"
     valid_values="">
