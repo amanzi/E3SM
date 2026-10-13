@@ -61,7 +61,7 @@ jobs:
           - ERS_Vmct_P4.ne4pg2_oQU480.A.ghci-oci_gnu
           - ERS_Vmct_P4.ne4pg2_oQU480.I1850ELMCN.ghci-oci_gnu.elm-qian_1948
     container:
-      image: ghcr.io/e3sm-project/containers-ghci:ghci-0.2.1
+      image: rfiorella/model-containers:e3sm-dev-debug
 
     steps:
       -
