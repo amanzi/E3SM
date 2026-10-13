@@ -277,6 +277,7 @@ contains
          emg                     => col_es%emg                              , & ! Input:  [real(r8) (:)   ]  ground emissivity
          hc_soi                  => col_es%hc_soi                           , & ! Input:  [real(r8) (:)   ]  soil heat content (MJ/m2)               ! TODO: make a module variable
          hc_soisno               => col_es%hc_soisno                        , & ! Input:  [real(r8) (:)   ]  soil plus snow plus lake heat content (MJ/m2) !TODO: make a module variable
+         hc_lake                 => col_es%hc_lake                          , & ! Output: [real(r8) (:)   ]  lake-water heat content (MJ/m2; zero for non-lake columns)
          tssbef                  => col_es%t_ssbef                          , & ! Input:  [real(r8) (:,:) ]  temperature at previous time step [K]
          t_h2osfc                => col_es%t_h2osfc                         , & ! Output: [real(r8) (:)   ]  surface water temperature
          t_soisno                => col_es%t_soisno                         , & ! Output: [real(r8) (:,:) ]  soil temperature (Kelvin)
@@ -635,6 +636,7 @@ contains
          if (.not. lun_pp%urbpoi(l)) then
             hc_soisno(c) = 0._r8
             hc_soi(c)    = 0._r8
+            hc_lake(c)   = 0._r8
          end if
          eflx_fgr12(c)= 0._r8
       end do
@@ -665,7 +667,6 @@ contains
             end if
          end do
       end do
-
 
       ! Free up memory
       deallocate(filter_nolakec_and_nourbanc)
@@ -1014,6 +1015,10 @@ contains
                  .AND. col_pp%itype(c) /= icol_sunwall .AND. col_pp%itype(c) /= icol_shadewall .AND. &
                  col_pp%itype(c) /= icol_roof) then
                cv(c,j) = csol(c,j)*(1._r8-watsat(c,j))*dz(c,j) + (h2osoi_ice(c,j)*cpice + h2osoi_liq(c,j)*cpliq)
+               ! Port of CLM bedrock heat-capacity fix: do not reduce solid-rock
+               ! heat capacity by soil porosity below the soil-bedrock boundary.
+               ! csol is already set to bedrock mineral heat capacity for these layers.
+               if (j > nlevbed) cv(c,j) = csol(c,j)*dz(c,j)
             else if (lun_pp%itype(l) == istwet) then
                cv(c,j) = (h2osoi_ice(c,j)*cpice + h2osoi_liq(c,j)*cpliq)
                if (j > nlevbed) cv(c,j) = csol(c,j)*dz(c,j)

@@ -64,7 +64,13 @@ struct Functions
     // defaults for gw_common_init()
     static inline constexpr bool do_molec_diff_default = false; // Flag for molecular diffusion
     static inline constexpr int  nbot_molec_default = 0;        // bottom level for molecular diffusion
-    static inline constexpr int  ktop_default = 0;              // Top level for gravity waves
+    // Top interface level for gravity waves. NOTE: the C++ GW routines use a
+    // "shifted" interface-index convention relative to EAM's Fortran: every
+    // loop starts at ktop+1 (and descending loops stop at ktop+1), so a given
+    // ktop here behaves like EAM's ktop+1. EAM uses ktop=0 (the physical top
+    // interface), so the equivalent value here is -1 (ktop+1 = 0 = top). No
+    // array is ever indexed at ktop directly, so index -1 is never read.
+    static inline constexpr int  ktop_default = -1;             // Top level for gravity waves
     static inline constexpr Real kwv_default = 6.28e-5;         // Effective horizontal wave number (100 km wavelength)
 
     static inline constexpr Real rog = C::Rair.value / C::gravit.value;
@@ -584,8 +590,8 @@ struct Functions
     const uview_1d<const Real>& u,
     const uview_1d<const Real>& v,
     // Outputs
-    Real& xv,
-    Real& yv,
+    Real& xv,  // thread-private: pass per-thread storage, not a view element
+    Real& yv,  // thread-private: pass per-thread storage, not a view element
     const uview_1d<Real>& ubm,
     const uview_1d<Real>& ubi);
 
@@ -614,13 +620,13 @@ struct Functions
     const uview_1d<const Real>& v,
     const uview_1d<const Real>& frontgf,
     // Outputs
-    Int& src_level,
-    Int& tend_level,
+    Int& src_level,  // thread-private: pass per-thread storage, not a view element
+    Int& tend_level,  // thread-private: pass per-thread storage, not a view element
     const uview_2d<Real>& tau,
     const uview_1d<Real>& ubm,
     const uview_1d<Real>& ubi,
-    Real& xv,
-    Real& yv,
+    Real& xv,  // thread-private: pass per-thread storage, not a view element
+    Real& yv,  // thread-private: pass per-thread storage, not a view element
     const uview_1d<Real>& c);
 
   KOKKOS_FUNCTION
@@ -632,8 +638,8 @@ struct Functions
     const uview_1d<const Real>& u,
     const uview_1d<const Real>& v,
     // Outputs
-    Real& xv,
-    Real& yv,
+    Real& xv,  // thread-private: pass per-thread storage, not a view element
+    Real& yv,  // thread-private: pass per-thread storage, not a view element
     const uview_1d<Real>& ubm,
     const uview_1d<Real>& ubi);
 
@@ -714,16 +720,16 @@ struct Functions
     const Real& storm_speed_min,
     const bool& use_gw_convect_old,
     // Outputs
-    Int& src_level,
-    Int& tend_level,
+    Int& src_level,   // thread-private: pass per-thread storage, not a view element
+    Int& tend_level,  // thread-private: pass per-thread storage, not a view element
     const uview_2d<Real>& tau,
     const uview_1d<Real>& ubm,
     const uview_1d<Real>& ubi,
-    Real& xv,
-    Real& yv,
+    Real& xv,         // thread-private: pass per-thread storage, not a view element
+    Real& yv,         // thread-private: pass per-thread storage, not a view element
     const uview_1d<Real>& c,
-    Real& hdepth,
-    Real& maxq0_out);
+    Real& hdepth,     // shared: written once by the kernel
+    Real& maxq0_out); // shared: written once by the kernel
 
   KOKKOS_FUNCTION
   static void gw_ediff(
@@ -784,13 +790,13 @@ struct Functions
     const uview_1d<const Real>& zm,
     const uview_1d<const Real>& nm,
     // Outputs
-    Int& src_level,
-    Int& tend_level,
+    Int& src_level,  // thread-private: pass per-thread storage, not a view element
+    Int& tend_level,  // thread-private: pass per-thread storage, not a view element
     const uview_2d<Real>& tau,
     const uview_1d<Real>& ubm,
     const uview_1d<Real>& ubi,
-    Real& xv,
-    Real& yv,
+    Real& xv,  // thread-private: pass per-thread storage, not a view element
+    Real& yv,  // thread-private: pass per-thread storage, not a view element
     const uview_1d<Real>& c);
 
   KOKKOS_FUNCTION

@@ -262,6 +262,8 @@ void MAMSrfOnlineEmiss::initialize_impl(const RunType run_type) {
   // Check the interval values for the following fields used by this interface.
   // NOTE: We do not include aerosol and gas species, e.g., soa_a1, num_a1,
   // because we automatically added these fields.
+  using namespace ekat::units;
+  using namespace ShortFieldTagsNames;
   const std::map<std::string, std::pair<Real, Real>> ranges_emissions = {
       {"sst", {-1e10, 1e10}},  // FIXME
       {"dstflx", {-1e10, 1e10}}};
@@ -283,9 +285,11 @@ void MAMSrfOnlineEmiss::initialize_impl(const RunType run_type) {
   // Constituent fluxes of species in [kg/m2/s]
   constituent_fluxes_ = get_field_out("constituent_fluxes");
 
-    const std::string marine_organics_data_file =
+  const std::string marine_organics_data_file =
       m_params.get<std::string>("marine_organics_file");
   const auto marine_map_file = m_params.get<std::string>("srf_remap_file", "");
+  const auto marine_time_interpolation_method = 
+      m_params.get<std::string>("time_interpolation_method", "yearly_periodic");
 
    const std::vector<std::string> marine_org_fld_name = {
       "TRUEPOLYC", "TRUEPROTC", "TRUELIPC"};           
@@ -298,7 +302,7 @@ void MAMSrfOnlineEmiss::initialize_impl(const RunType run_type) {
 
   morg_data_interp_ = std::make_shared<DataInterpolation>(grid_, morg_fields_);
   morg_data_interp_->set_logger(m_atm_logger);
-  morg_data_interp_->setup_periodic_time_database({marine_organics_data_file});
+  morg_data_interp_->setup_time_database({marine_organics_data_file}, marine_time_interpolation_method);
   morg_data_interp_->create_horiz_remappers(
       marine_map_file == "none" ? "" : marine_map_file, m_iop_data_manager);
   DataInterpolation::VertRemapData remap_data;
@@ -308,11 +312,10 @@ void MAMSrfOnlineEmiss::initialize_impl(const RunType run_type) {
   // Setup data interpolation for surface emissions.
   //--------------------------------------------------------------------
   {
-    using namespace ekat::units;
-    using namespace ShortFieldTagsNames;
     const FieldLayout scalar2d = grid_->get_2d_scalar_layout();
     const auto srf_map_file    = m_params.get<std::string>("srf_remap_file", "");
-    const auto srf_time_interp = DataInterpolation::Linear;
+    const auto srf_time_interpolation_method = 
+        m_params.get<std::string>("time_interpolation_method", "yearly_periodic");
     for(srf_emiss_ &ispec_srf : srf_emiss_species_) {
       std::vector<Field> srf_fields;
       srf_fields.reserve(ispec_srf.sectors.size());
@@ -325,8 +328,8 @@ void MAMSrfOnlineEmiss::initialize_impl(const RunType run_type) {
 
       ispec_srf.data_interp_ = std::make_shared<DataInterpolation>(grid_, srf_fields);
       ispec_srf.data_interp_->set_logger(m_atm_logger);
-      ispec_srf.data_interp_->setup_periodic_time_database(
-          {ispec_srf.data_file});
+      ispec_srf.data_interp_->setup_time_database(
+          {ispec_srf.data_file}, srf_time_interpolation_method);
       ispec_srf.data_interp_->create_horiz_remappers(
           srf_map_file == "none" ? "" : srf_map_file, m_iop_data_manager);
 
@@ -334,12 +337,20 @@ void MAMSrfOnlineEmiss::initialize_impl(const RunType run_type) {
       remap_data.vr_type = DataInterpolation::None;
       ispec_srf.data_interp_->create_vert_remapper(remap_data);
 
-      ispec_srf.data_interp_->init_time_interpolation(start_of_step_ts(), srf_time_interp);
+      ispec_srf.data_interp_->init_time_interpolation(start_of_step_ts(), 
+                                                       DataInterpolation::Linear);
     }
   }
 
-    // Current month ( 0-based)
-    const int curr_month = start_of_step_ts().get_month() - 1;
+  //--------------------------------------------------------------------
+  // Allocate temporary field for accumulating sector emissions
+  //--------------------------------------------------------------------
+  {
+    const FieldLayout scalar2d = grid_->get_2d_scalar_layout();
+    FieldIdentifier fid("sector_field_sum", scalar2d, none, grid_->name());
+    sector_field_sum_ = Field(fid);
+    sector_field_sum_.allocate_view();
+  }
 
   //-----------------------------------------------------------------
   // Read Soil erodibility data
@@ -471,16 +482,24 @@ void MAMSrfOnlineEmiss::run_impl(const double dt) {
     const int species_index = spcIndex_in_pcnst_.at(ispec_srf.species_name);
 
     auto constituent_fluxes_ispe_srf = constituent_fluxes_.get_component(species_index);
-    // modify units from molecules/cm2/s to kg/m2/s
-    constituent_fluxes_ispe_srf.deep_copy(0.0);
-
+    
+    // Zero the temporary accumulation field
+    sector_field_sum_.deep_copy(0.0);
+    
+    // Accumulate all sectors into the temporary field
     for(const auto &sector_field : ispec_srf.emiss_sector_fields_) {
-        constituent_fluxes_ispe_srf.update(sector_field, 1, 1);
+      sector_field_sum_.update(sector_field, 1, 1);
     }
-
-        const Real mfactor = amufac * ispec_srf.scale_factor *
-                                                 mam4::gas_chemistry::adv_mass[species_index - offset_];
-    constituent_fluxes_ispe_srf.scale(mfactor);
+    
+    // Unit conversion factor (from molecules/cm2/s to kg/m2/s)
+    const Real mfactor = amufac * ispec_srf.scale_factor *
+                         mam4::gas_chemistry::adv_mass[species_index - offset_];
+    
+    // Scale the accumulated sectors
+    sector_field_sum_.scale(mfactor);
+    
+    // Add to constituent fluxes
+    constituent_fluxes_ispe_srf.update(sector_field_sum_, 1, 1);
   }  // for loop for species
   Kokkos::fence();
 }  // run_impl ends
