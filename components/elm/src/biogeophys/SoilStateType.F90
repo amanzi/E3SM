@@ -9,7 +9,7 @@ module SoilStateType
   use spmdMod         , only : mpicom, MPI_INTEGER, masterproc, iam
   use ncdio_pio       , only : file_desc_t, ncd_defvar, ncd_io, ncd_double, ncd_int, ncd_inqvdlen
   use ncdio_pio       , only : ncd_pio_openfile, ncd_inqfdims, ncd_pio_closefile, ncd_inqdid, ncd_inqdlen
-  use elm_varpar      , only : more_vertlayers, numpft, numrad
+  use elm_varpar      , only : interp_soil_texture, numpft, numrad
   use elm_varpar      , only : nlevsoi, nlevgrnd, nlevlak, nlevsoifl, nlayer, nlayert, nlevurb, nlevsno
   use elm_varpar      , only : scalez, zecoeff
   use landunit_varcon , only : istice, istdlak, istwet, istsoil, istcrop, istice_mec
@@ -21,6 +21,7 @@ module SoilStateType
   use elm_varctl      , only : use_cn, use_lch4,use_dynroot, use_fates
   use elm_varctl      , only : use_erosion
   use elm_varctl      , only : use_var_soil_thick
+  use elm_varctl      , only : squareomfrac
   use elm_varctl      , only : iulog, fsurdat, hist_wrtch4diag
   use CH4varcon       , only : allowlakeprod
   use LandunitType    , only : lun_pp                
@@ -452,7 +453,7 @@ contains
     ! differs from the default (10 layers).
     ! --------------------------------------------------------------------
     call ncd_inqdlen(ncid,dimid,nlevsoifl,name='nlevsoi')
-    if ( .not. more_vertlayers )then
+    if ( .not. interp_soil_texture )then
        if ( nlevsoifl /= nlevsoi )then
           call endrun(msg=' ERROR: Number of soil layers on file does NOT match the number being used'//&
                errMsg(__FILE__, __LINE__))
@@ -681,23 +682,23 @@ contains
           do lev = 1,nlevgrnd
              ! Number of soil layers in hydrologically active columns = NLEV2BED
 	     nlevbed = col_pp%nlevbed(c)
-             if ( more_vertlayers )then ! duplicate clay and sand values from last soil layer
+             if ( interp_soil_texture )then ! interpolate clay/sand/organic onto the model grid
 
                 if (lev .eq. 1) then
                    clay = clay3d(g,ti,1)
                    sand = sand3d(g,ti,1)
                    gravel = grvl3d(g,ti,1)
-                   om_frac = organic3d(g,ti,1)/organic_max 
-                else if (lev <= nlevsoi) then
+                   om_frac = max(0.0_r8, min(organic3d(g,ti,1)/organic_max, 1._r8))
+                else if (lev <= min(nlevbed,nlevsoi)) then
                    do j = 1,nlevsoifl-1
                       if (zisoi(lev) >= zisoifl(j) .AND. zisoi(lev) < zisoifl(j+1)) then
                          clay = clay3d(g,ti,j+1)
                          sand = sand3d(g,ti,j+1)
                          gravel = grvl3d(g,ti,j+1)
-                         om_frac = organic3d(g,ti,j+1)/organic_max    
+                         om_frac = max(0.0_r8, min(organic3d(g,ti,j+1)/organic_max, 1._r8))
                       endif
                    end do
-                else
+                else ! target interface at/below source data bottom: use deepest source layer
                    clay = clay3d(g,ti,nlevsoifl)
                    sand = sand3d(g,ti,nlevsoifl)
                    gravel = grvl3d(g,ti,nlevsoifl)
@@ -708,7 +709,11 @@ contains
                    clay = clay3d(g,ti,lev)
                    sand = sand3d(g,ti,lev)
                    gravel = grvl3d(g,ti,lev)
-                   om_frac = (organic3d(g,ti,lev)/organic_max)**2._r8
+                   if (squareomfrac) then
+                      om_frac = (organic3d(g,ti,lev)/organic_max)**2._r8
+                   else
+                      om_frac = max(0.0_r8, min((organic3d(g,ti,lev)/organic_max), 1._r8))
+                   endif
                 else
                    clay = clay3d(g,ti,nlevsoi)
                    sand = sand3d(g,ti,nlevsoi)
@@ -844,7 +849,11 @@ contains
                 clay    =  this%cellclay_col(c,lev)
                 sand    =  this%cellsand_col(c,lev)
                 gravel  =  this%cellgrvl_col(c,lev)
-                om_frac = (this%cellorg_col(c,lev)/organic_max)**2._r8
+                if (squareomfrac) then
+                   om_frac = (this%cellorg_col(c,lev)/organic_max)**2._r8
+                else
+                   om_frac = max(0.0_r8, min((this%cellorg_col(c,lev)/organic_max), 1._r8))
+                endif
              else
                 clay    = this%cellclay_col(c,nlevsoi)
                 sand    = this%cellsand_col(c,nlevsoi)
