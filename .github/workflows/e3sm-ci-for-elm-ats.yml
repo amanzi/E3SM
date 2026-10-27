@@ -56,10 +56,10 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - SMS_Vmct_D_Ln5_P4.ne4pg2_oQU480.F2010
-          - ERS_Vmct_Ld5_P4.ne4pg2_oQU480.F2010.eam-wcprod_F2010
-          - ERS_Vmct_P4.ne4pg2_oQU480.A
-          - ERS_Vmct_P4.ne4pg2_oQU480.I1850ELMCN.elm-qian_1948
+          - SMS_Vmct_D_Ln5_P4.ne4pg2_oQU480.F2010.e3sm-container_gnu
+          - ERS_Vmct_Ld5_P4.ne4pg2_oQU480.F2010.e3sm-container_gnu.eam-wcprod_F2010
+          - ERS_Vmct_P4.ne4pg2_oQU480.A.e3sm-container_gnu
+          - ERS_Vmct_P4.ne4pg2_oQU480.I1850ELMCN.e3sm-container_gnu.elm-qian_1948
     env:
       # ghci-oci (the machine the old test names embedded) and its container,
       # containers-ghci, were both retired upstream; e3sm-container (shipped
@@ -89,7 +89,7 @@ jobs:
             "$IMAGE" bash -lc '. /projects/e3sm/cime/enable.sh &&
               cd /projects/e3sm/work/E3SM/cime/scripts &&
               ./create_test ${{ matrix.test }} --machine e3sm-container --compiler gnu \
-                --wait --debug --test-id gh'
+                --wait --test-id gh'
           sudo chown -R "$(id -u):$(id -g)" scratch
       -
         name: Artifacts
