@@ -99,7 +99,7 @@ module controlMod
                         use_snicar_frc, use_snicar_ad, use_firn_percolation_and_compaction, &
                         use_extrasnowlayers, use_T_rho_dependent_snowthk, &
                         use_vancouver, use_mexicocity, use_noio, use_finetop_rad, &
-                        use_ats, use_ats_ic, ats_verbosity
+                        use_ats, use_ats_ic, ats_verbosity, pf_hmode
   !
   ! !PUBLIC TYPES:
   implicit none
@@ -658,11 +658,6 @@ contains
        ! checking if conflict when using ATS external model
        if (use_ats .or. use_ats_ic) then
           ! currently ATS only provides subsurface hydrology
-          if (use_vsfm) then
-             call endrun(msg=' ERROR: use_vsfm and use_ats cannot both be set to true.'//&
-                   errMsg(__FILE__, __LINE__))
-          end if
-
           if (use_pflotran .and. pf_hmode) then
              call endrun(msg=' ERROR: use_pflotran/pf_hmode and use_ats cannot both be set to true.'//&
                    errMsg(__FILE__, __LINE__))
