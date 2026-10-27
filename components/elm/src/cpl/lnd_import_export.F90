@@ -201,6 +201,7 @@ contains
 
     thisng = bounds%endg - bounds%begg + 1
 
+#ifdef CPL_BYPASS
     ! Lightning: read file and bcast lat/lon coords before the g loop so all
     ! ranks participate in collective calls at the same point.
     if (use_cn .or. use_fates) then
@@ -232,7 +233,6 @@ contains
       end if
     end if
 
-#ifdef CPL_BYPASS
     !-----------------------------------Meteorological forcing  -----------------------------------
     !On first timestep, read all met data for all gridcells and store in memory.
     !Files are opened once per variable (not once per cell) to avoid stack overflow in
@@ -1414,6 +1414,7 @@ contains
 
      end do
 
+#ifdef CPL_BYPASS
     ! Lightning: gather lnfmind from all ranks to rank 0, do lookups, scatter lnfm back.
     if (use_cn .or. use_fates) then
       if (atm2lnd_vars%loaded_bypassdata .eq. 0) then
@@ -1476,7 +1477,6 @@ contains
       end if
     end if
 
-#ifdef CPL_BYPASS
     atm2lnd_vars%loaded_bypassdata = 1
 #endif
 
