@@ -56,26 +56,41 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - SMS_Vmct_D_Ln5_P4.ne4pg2_oQU480.F2010.ghci-oci_gnu
-          - ERS_Vmct_Ld5_P4.ne4pg2_oQU480.F2010.ghci-oci_gnu.eam-wcprod_F2010
-          - ERS_Vmct_P4.ne4pg2_oQU480.A.ghci-oci_gnu
-          - ERS_Vmct_P4.ne4pg2_oQU480.I1850ELMCN.ghci-oci_gnu.elm-qian_1948
-    container:
-      image: ghcr.io/e3sm-project/containers-ghci:ghci-0.2.1
+          - SMS_Vmct_D_Ln5_P4.ne4pg2_oQU480.F2010.e3sm-container_gnu
+          - ERS_Vmct_Ld5_P4.ne4pg2_oQU480.F2010.e3sm-container_gnu.eam-wcprod_F2010
+          - ERS_Vmct_P4.ne4pg2_oQU480.A.e3sm-container_gnu
+          - ERS_Vmct_P4.ne4pg2_oQU480.I1850ELMCN.e3sm-container_gnu.elm-qian_1948
+    env:
+      # ghci-oci (the machine the old test names embedded) and its container,
+      # containers-ghci, were both retired upstream; e3sm-container (shipped
+      # inside e3sm-image) is the current GitHub-hosted-runner replacement.
+      IMAGE: ghcr.io/e3sm-project/e3sm-image:gnu13-openmpi4
 
     steps:
       -
         name: Checkout
         uses: actions/checkout@v7
         with:
+          path: E3SM
           persist-credentials: false
           show-progress: false
           submodules: recursive
       -
+        name: Pull the image
+        run: docker pull "$IMAGE"
+      -
         name: CIME
-        working-directory: cime/scripts
         run: |
-          ./create_test ${{ matrix.test }} --wait --debug
+          mkdir -p scratch
+          sudo chown -R 1000:1000 E3SM scratch
+          docker run --rm \
+            -v "$PWD/E3SM:/projects/e3sm/work/E3SM" \
+            -v "$PWD/scratch:/home/e3sm/e3sm_scratch" \
+            "$IMAGE" bash -lc '. /projects/e3sm/cime/enable.sh &&
+              cd /projects/e3sm/work/E3SM/cime/scripts &&
+              ./create_test ${{ matrix.test }} --machine e3sm-container --compiler gnu \
+                --wait --test-id gh'
+          sudo chown -R "$(id -u):$(id -g)" scratch
       -
         name: Artifacts
         uses: actions/upload-artifact@v7
@@ -83,7 +98,7 @@ jobs:
         with:
           name: ${{ matrix.test }}
           path: |
-            /projects/e3sm/scratch/${{ matrix.test }}*/TestStatus.log
-            /projects/e3sm/scratch/${{ matrix.test }}*/bld/*.bldlog.*
-            /projects/e3sm/scratch/${{ matrix.test }}*/run/*.log.*
-            /projects/e3sm/scratch/${{ matrix.test }}*/run/*.cprnc.out
+            scratch/*.gh/TestStatus.log
+            scratch/*.gh/bld/*.bldlog.*
+            scratch/*.gh/run/*.log.*
+            scratch/*.gh/run/*.cprnc.out
